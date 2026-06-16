@@ -191,6 +191,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             statusItem.menu?.item(at: 0)?.title = "録画開始"
             statusItem.menu?.item(at: 0)?.isEnabled = true
             overlay.hide()
+        case .idleSaving:
+            button.title = "1FPS 保存中"
+            button.contentTintColor = nil
+            statusItem.menu?.item(at: 0)?.title = "録画開始"
+            statusItem.menu?.item(at: 0)?.isEnabled = true
+            if RecorderSettings.showOverlay {
+                overlay.showSaving(message: overlayMessage)
+            } else {
+                overlay.hide()
+            }
         case .recording(let startedAt):
             let elapsed = Int(Date().timeIntervalSince(startedAt))
             let score = OneFPSRecorder.monthlyScore(includingCurrentStartedAt: startedAt)
@@ -251,8 +261,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if recorder.isRecording {
             overlayMessage = Self.stopMessage()
             recorder.stop()
-        } else if recorder.isEncoding {
-            log("Ignored toggle while encoding")
         } else {
             overlayMessage = Self.startMessage()
             Task {
@@ -515,6 +523,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
 enum RecorderState {
     case idle
+    case idleSaving
     case recording(Date)
     case encoding
     case error(String)
@@ -838,13 +847,21 @@ final class OneFPSRecorder: NSObject {
     private var displayTimer: DispatchSourceTimer?
     private var captureTimer: DispatchSourceTimer?
     private let captureQueue = DispatchQueue(label: "onefps.capture", qos: .utility)
+    private let encodeQueue = DispatchQueue(label: "onefps.encode", qos: .utility)
     private var frameDirectory: URL?
     private var outputURL: URL?
     private var frameIndex = 0
     private(set) var isEncoding = false
-    private var pendingStopAfterEncode = false
+    private var encodingJobCount = 0
 
     var isRecording: Bool { startedAt != nil }
+
+    private struct PendingSegment {
+        let frameDirectory: URL
+        let outputURL: URL
+        let startedAt: Date
+        let endedAt: Date
+    }
 
     init(status: @escaping (RecorderState) -> Void) {
         self.status = status
@@ -857,8 +874,6 @@ final class OneFPSRecorder: NSObject {
 
         let now = Date()
         try createSegment(startedAt: now)
-        isEncoding = false
-        pendingStopAfterEncode = false
         startedAt = now
 
         status(.recording(startedAt ?? Date()))
@@ -868,38 +883,56 @@ final class OneFPSRecorder: NSObject {
 
     func stop() {
         guard isRecording else { return }
-        pendingStopAfterEncode = true
-        if isEncoding {
-            status(.encoding)
-            return
-        }
         stopDisplayTimer()
         stopCaptureTimer()
-        isEncoding = true
-        status(.encoding)
 
-        captureQueue.async { [weak self] in
-            self?.encodeCurrentSegment(final: true)
+        let segment = captureQueue.sync {
+            detachCurrentSegment(endedAt: Date(), keepRecording: false)
+        }
+        status(.idleSaving)
+
+        if let segment {
+            enqueueEncoding(segment)
+        } else {
+            status(isEncoding ? .idleSaving : .idle)
         }
     }
 
     func flushCurrentSegment() {
-        guard isRecording, !isEncoding else { return }
+        guard isRecording else { return }
         stopCaptureTimer()
-        isEncoding = true
-        status(.encoding)
-
-        captureQueue.async { [weak self] in
-            self?.encodeCurrentSegment(final: false)
+        let nextStartedAt = Date()
+        let segment = captureQueue.sync {
+            let detached = detachCurrentSegment(endedAt: nextStartedAt, keepRecording: true)
+            do {
+                try createSegment(startedAt: nextStartedAt)
+            } catch {
+                startedAt = nil
+            }
+            return detached
         }
+
+        if startedAt == nil {
+            stopDisplayTimer()
+            status(.error("次の録画区切りを作成できませんでした。"))
+            return
+        }
+
+        if let segment {
+            DispatchQueue.main.async {
+                self.enqueueEncoding(segment)
+            }
+        }
+        status(.recording(startedAt ?? Date()))
+        startCaptureTimer()
     }
 
     private func createSegment(startedAt: Date) throws {
         let frameDirectory = Self.recordingsDirectory
-            .appendingPathComponent(".frames-\(Self.timestamp())", isDirectory: true)
+            .appendingPathComponent(".frames-\(Self.timestamp())-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: frameDirectory, withIntermediateDirectories: true)
         self.frameDirectory = frameDirectory
-        self.outputURL = frameDirectory.appendingPathComponent("segment-\(Self.timestamp()).mp4")
+        self.outputURL = frameDirectory.appendingPathComponent("segment-\(Self.timestamp())-\(UUID().uuidString).mp4")
         self.segmentStartedAt = startedAt
         frameIndex = 0
     }
@@ -916,9 +949,34 @@ final class OneFPSRecorder: NSObject {
 
     private func cleanupAll() {
         cleanupCurrentSegment()
-        isEncoding = false
-        pendingStopAfterEncode = false
         startedAt = nil
+    }
+
+    private func detachCurrentSegment(endedAt: Date, keepRecording: Bool) -> PendingSegment? {
+        guard let frameDirectory, let outputURL else {
+            if !keepRecording {
+                startedAt = nil
+            }
+            self.frameDirectory = nil
+            self.outputURL = nil
+            frameIndex = 0
+            segmentStartedAt = nil
+            return nil
+        }
+        let segment = PendingSegment(
+            frameDirectory: frameDirectory,
+            outputURL: outputURL,
+            startedAt: segmentStartedAt ?? startedAt ?? endedAt,
+            endedAt: endedAt
+        )
+        self.frameDirectory = nil
+        self.outputURL = nil
+        frameIndex = 0
+        segmentStartedAt = nil
+        if !keepRecording {
+            startedAt = nil
+        }
+        return segment
     }
 
     private func startDisplayTimer() {
@@ -980,38 +1038,68 @@ final class OneFPSRecorder: NSObject {
     }
 
     private func rotateSegmentFromCaptureQueue() {
-        guard isRecording, !isEncoding else { return }
-        stopCaptureTimer()
-        isEncoding = true
-        DispatchQueue.main.async {
-            self.status(.encoding)
-        }
-        encodeCurrentSegment(final: false)
-    }
-
-    private func encodeCurrentSegment(final: Bool) {
-        guard let frameDirectory, let outputURL else {
+        guard isRecording else { return }
+        let nextStartedAt = Date()
+        let segment = detachCurrentSegment(endedAt: nextStartedAt, keepRecording: true)
+        do {
+            try createSegment(startedAt: nextStartedAt)
+        } catch {
             DispatchQueue.main.async {
+                self.stopDisplayTimer()
                 self.cleanupAll()
-                self.status(.idle)
+                self.status(.error("次の録画区切りを作成できませんでした。"))
             }
             return
         }
-        let recordingStartedAt = segmentStartedAt ?? startedAt ?? Date()
-        let recordingEndedAt = Date()
+        if let segment {
+            DispatchQueue.main.async {
+                self.enqueueEncoding(segment)
+            }
+        }
+    }
+
+    private func enqueueEncoding(_ segment: PendingSegment) {
+        encodingJobCount += 1
+        isEncoding = true
+        encodeQueue.async { [weak self] in
+            self?.encodeSegment(segment)
+        }
+    }
+
+    private func finishEncoding(success: Bool, errorMessage: String?) {
+        encodingJobCount = max(0, encodingJobCount - 1)
+        isEncoding = encodingJobCount > 0
+        if let errorMessage {
+            stopDisplayTimer()
+            cleanupAll()
+            status(.error(errorMessage))
+            return
+        }
+        if isRecording {
+            status(.recording(startedAt ?? Date()))
+        } else {
+            status(isEncoding ? .idleSaving : .idle)
+        }
+    }
+
+    private func encodeSegment(_ segment: PendingSegment) {
+        let frameDirectory = segment.frameDirectory
+        let outputURL = segment.outputURL
+        guard FileManager.default.fileExists(atPath: frameDirectory.path) else {
+            DispatchQueue.main.async {
+                self.finishEncoding(success: true, errorMessage: nil)
+            }
+            return
+        }
 
         let frameCount = (try? FileManager.default.contentsOfDirectory(atPath: frameDirectory.path)
             .filter { $0.hasSuffix(".jpg") }
             .count) ?? 0
 
         guard frameCount > 0 else {
+            try? FileManager.default.removeItem(at: frameDirectory)
             DispatchQueue.main.async {
-                if final || self.pendingStopAfterEncode {
-                    self.cleanupAll()
-                    self.status(.idle)
-                } else {
-                    self.restartAfterSegmentSave()
-                }
+                self.finishEncoding(success: true, errorMessage: nil)
             }
             return
         }
@@ -1039,51 +1127,23 @@ final class OneFPSRecorder: NSObject {
         process.waitUntilExit()
 
         let appendSucceeded = process.terminationStatus == 0
-            ? appendSegmentToDailyFile(segmentURL: outputURL, frameDirectory: frameDirectory)
+            ? Self.appendSegmentToDailyFile(segmentURL: outputURL, frameDirectory: frameDirectory, date: segment.endedAt)
             : false
         if appendSucceeded {
-            Self.appendRecordingLog(startedAt: recordingStartedAt, endedAt: recordingEndedAt, outputURL: Self.dailyOutputURL(for: recordingEndedAt))
-            Self.updateDailyTotalLog(for: recordingEndedAt)
+            Self.appendRecordingLog(startedAt: segment.startedAt, endedAt: segment.endedAt, outputURL: Self.dailyOutputURL(for: segment.endedAt))
+            Self.updateDailyTotalLog(for: segment.endedAt)
+            try? FileManager.default.removeItem(at: frameDirectory)
         }
 
         DispatchQueue.main.async {
             if process.terminationStatus == 0, appendSucceeded {
-                if final || self.pendingStopAfterEncode {
-                    self.stopDisplayTimer()
-                    self.cleanupAll()
-                    self.status(.idle)
-                } else {
-                    self.restartAfterSegmentSave()
-                }
+                self.finishEncoding(success: true, errorMessage: nil)
             } else if process.terminationStatus == 0 {
-                self.stopDisplayTimer()
-                self.cleanupAll()
-                self.status(.error("日別動画への追記に失敗しました。"))
+                self.finishEncoding(success: false, errorMessage: "日別動画への追記に失敗しました。")
             } else {
-                self.stopDisplayTimer()
-                self.cleanupAll()
-                self.status(.error("ffmpeg が失敗しました。終了コード: \(process.terminationStatus)"))
+                self.finishEncoding(success: false, errorMessage: "ffmpeg が失敗しました。終了コード: \(process.terminationStatus)")
             }
         }
-    }
-
-    private func restartAfterSegmentSave() {
-        cleanupCurrentSegment()
-        do {
-            try createSegment(startedAt: Date())
-            isEncoding = false
-            pendingStopAfterEncode = false
-            status(.recording(startedAt ?? Date()))
-            startCaptureTimer()
-        } catch {
-            stopDisplayTimer()
-            cleanupAll()
-            status(.error("次の録画区切りを作成できませんでした。"))
-        }
-    }
-
-    private func appendSegmentToDailyFile(segmentURL: URL, frameDirectory: URL) -> Bool {
-        Self.appendSegmentToDailyFile(segmentURL: segmentURL, frameDirectory: frameDirectory, date: Date())
     }
 
     private static func appendSegmentToDailyFile(segmentURL: URL, frameDirectory: URL, date: Date) -> Bool {
