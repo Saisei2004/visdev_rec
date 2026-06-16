@@ -45,7 +45,12 @@ enum SharedSettings {
     }
 
     static var monthlyGoal: Int {
-        get { max(0, defaults.integer(forKey: monthlyGoalKey)) }
+        get {
+            if defaults.object(forKey: monthlyGoalKey) == nil {
+                return 100000
+            }
+            return max(0, defaults.integer(forKey: monthlyGoalKey))
+        }
         set { defaults.set(max(0, newValue), forKey: monthlyGoalKey) }
     }
 
@@ -131,7 +136,7 @@ final class SettingsDelegate: NSObject, NSApplicationDelegate {
         goalLabel.frame = NSRect(x: 310, y: 124, width: 78, height: 20)
 
         monthlyGoalField.frame = NSRect(x: 390, y: 118, width: 80, height: 28)
-        monthlyGoalField.placeholderString = "0"
+        monthlyGoalField.placeholderString = "100000"
 
         glowCheckbox.state = SharedSettings.glowWhenGoalReached ? .on : .off
         glowCheckbox.frame = NSRect(x: 130, y: 88, width: 220, height: 22)
@@ -172,7 +177,7 @@ final class SettingsDelegate: NSObject, NSApplicationDelegate {
         SharedSettings.showOverlay = overlayCheckbox.state == .on
         SharedSettings.showMonthlyScore = monthlyScoreCheckbox.state == .on
         SharedSettings.hourlyRate = Int(hourlyRateField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)) ?? 2000
-        SharedSettings.monthlyGoal = Int(monthlyGoalField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)) ?? 0
+        SharedSettings.monthlyGoal = Int(monthlyGoalField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)) ?? 100000
         SharedSettings.glowWhenGoalReached = glowCheckbox.state == .on
         renameExistingRecordings(to: newName)
         rewriteRecordingLogFileNames(to: newName)

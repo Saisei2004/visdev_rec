@@ -57,6 +57,9 @@ enum RecorderSettings {
     static var monthlyGoal: Int {
         get {
             defaults.synchronize()
+            if defaults.object(forKey: monthlyGoalKey) == nil {
+                return 100000
+            }
             return max(0, defaults.integer(forKey: monthlyGoalKey))
         }
         set { defaults.set(max(0, newValue), forKey: monthlyGoalKey) }
