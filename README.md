@@ -1,0 +1,99 @@
+# VisDev Recorder
+
+Macの画面を1FPSで軽く記録するメニューバー常駐アプリです。音声なし、低めの解像度、日別MP4への追記、月別ログ保存に寄せています。
+
+## 最短インストール
+
+```zsh
+git clone https://github.com/Saisei2004/visdev_rec.git
+cd visdev_rec
+./install.sh
+```
+
+インストール後は `~/Applications/OneFPSRecorder.app` に入り、ログイン時に自動起動します。メニューバーに `1FPS` が出れば起動済みです。
+
+初回だけ macOS の `画面収録` 許可が必要です。聞かれたら `OneFPSRecorder` を許可し、macOSが求めた場合はアプリを開き直してください。
+
+## 使い方
+
+- メニューバーの `1FPS` から `録画開始` / `録画停止`
+- `保存フォルダを開く` で保存先をFinder表示
+- `設定...` で保存名、録画中パネル、月間スコアを変更
+- 録画中は小さな前面パネルからも停止可能
+
+## 保存先
+
+```text
+~/Movies/1FPS録画/YYYY-MM/MMDD_保存名.mp4
+~/Movies/1FPS録画/YYYY-MM/録画区間ログ-YYYY-MM.txt
+~/Movies/1FPS録画/YYYY-MM/日別合計作業時間-YYYY-MM.txt
+```
+
+例:
+
+```text
+~/Movies/1FPS録画/2026-06/0616_松田.mp4
+```
+
+同じ日の録画は1つのMP4へ後ろに追記されます。統合済みの一時動画は自動で削除します。
+
+## 設定
+
+- `保存名`: ファイル名の `MMDD_保存名.mp4` の保存名部分
+- `録画中パネルを表示する`: 赤い録画中パネルの表示切り替え
+- `月間スコアを表示する`: 月内の録画時間から算出した金額を表示
+- `係数`: 1時間あたりの金額。標準は `2000`
+- `月末ライン`: 月内の目標金額
+- `目標達成時に光らせる`: 月間スコアが月末ライン以上になると録画中パネルが発光
+
+## コメント
+
+録画開始時のコメントは時間帯とその日の作業時間で変わります。
+
+- 朝: `朝から偉いですね。` など
+- 昼: `ここからが本番。` など
+- 夜: `今日も頑張ってるね。` など
+- 作業時間: 1時間、4時間、8時間を超えると候補が変化
+- `Visitas`、`JUST DO IT`、画面録画システムらしいコメントも混ざります
+
+表示コメントは最大28文字に収めています。
+
+## 仕様
+
+- 1秒1コマ
+- MP4 / H.264
+- 音声なし
+- 出力解像度: `960x600`
+- 複数モニター時はマウスカーソルがある画面を録画
+- 約1時間ごとに自動保存して一時フレームを削除
+- ffmpegは `~/.local/bin/ffmpeg` を使用
+
+## インストーラが行うこと
+
+- Swiftでアプリをビルド
+- ffmpegがなければ準備
+  - Homebrewがある場合: `brew install ffmpeg`
+  - Homebrewがない場合: Mac用ffmpegバイナリを `~/.local/bin` へ取得
+- `~/Applications/OneFPSRecorder.app` へ配置
+- LaunchAgentを作成してログイン時自動起動
+
+## 確認
+
+```zsh
+ps -axo pid,%mem,rss,args | rg OneFPSRecorder
+tail -n 50 ~/Library/Logs/1FPS録画.log
+```
+
+## アンインストール
+
+```zsh
+launchctl unload ~/Library/LaunchAgents/local.codex.OneFPSRecorder.plist 2>/dev/null || true
+rm -f ~/Library/LaunchAgents/local.codex.OneFPSRecorder.plist
+rm -rf ~/Applications/OneFPSRecorder.app
+```
+
+録画済みファイルを消す場合だけ、以下も実行します。
+
+```zsh
+rm -rf ~/Movies/1FPS録画
+```
