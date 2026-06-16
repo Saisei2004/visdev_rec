@@ -58,9 +58,11 @@ enum SharedSettings {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
         let fallback = trimmed.isEmpty ? "録画" : trimmed
         let invalid = CharacterSet(charactersIn: "/:\\?%*|\"<>")
-        return fallback.components(separatedBy: invalid)
+        let sanitized = fallback.components(separatedBy: invalid)
             .joined(separator: "-")
             .trimmingCharacters(in: .whitespacesAndNewlines)
+        let safeName = sanitized.isEmpty ? "録画" : sanitized
+        return String(safeName.prefix(48))
     }
 }
 
@@ -173,6 +175,7 @@ final class SettingsDelegate: NSObject, NSApplicationDelegate {
         SharedSettings.monthlyGoal = Int(monthlyGoalField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)) ?? 0
         SharedSettings.glowWhenGoalReached = glowCheckbox.state == .on
         renameExistingRecordings(to: newName)
+        rewriteRecordingLogFileNames(to: newName)
         NSApp.terminate(nil)
     }
 
@@ -204,9 +207,124 @@ final class SettingsDelegate: NSObject, NSApplicationDelegate {
                 guard let day = recordingDay(from: fileURL.deletingPathExtension().lastPathComponent) else { continue }
                 let newURL = monthURL.appendingPathComponent("\(day)_\(newName).mp4")
                 guard fileURL.path != newURL.path else { continue }
-                guard !FileManager.default.fileExists(atPath: newURL.path) else { continue }
+                if FileManager.default.fileExists(atPath: newURL.path) {
+                    _ = mergeVideoFile(fileURL, into: newURL)
+                    continue
+                }
                 try? FileManager.default.moveItem(at: fileURL, to: newURL)
             }
+        }
+    }
+
+    private func mergeVideoFile(_ sourceURL: URL, into targetURL: URL) -> Bool {
+        let directory = targetURL.deletingLastPathComponent()
+        let stamp = timestamp()
+        let listURL = directory.appendingPathComponent(".rename-merge-\(stamp)-\(UUID().uuidString).txt")
+        let tempURL = directory.appendingPathComponent(".rename-merge-\(stamp)-\(UUID().uuidString).mp4")
+        let backupURL = directory.appendingPathComponent(".rename-backup-\(stamp)-\(UUID().uuidString).mp4")
+        let concatList = [
+            "file '\(concatEscapedPath(targetURL.path))'",
+            "file '\(concatEscapedPath(sourceURL.path))'"
+        ].joined(separator: "\n") + "\n"
+
+        do {
+            try concatList.write(to: listURL, atomically: true, encoding: .utf8)
+            let ffmpeg = FileManager.default.homeDirectoryForCurrentUser
+                .appendingPathComponent(".local/bin/ffmpeg")
+            let process = Process()
+            process.executableURL = ffmpeg
+            process.arguments = [
+                "-hide_banner",
+                "-loglevel", "error",
+                "-f", "concat",
+                "-safe", "0",
+                "-i", listURL.path,
+                "-vf", "scale=960:600:force_original_aspect_ratio=decrease,pad=960:600:(ow-iw)/2:(oh-ih)/2,fps=1",
+                "-c:v", "libx264",
+                "-preset", "veryfast",
+                "-tune", "stillimage",
+                "-pix_fmt", "yuv420p",
+                "-an",
+                "-movflags", "+faststart",
+                tempURL.path,
+                "-y"
+            ]
+            try process.run()
+            process.waitUntilExit()
+            guard process.terminationStatus == 0 else {
+                try? FileManager.default.removeItem(at: listURL)
+                try? FileManager.default.removeItem(at: tempURL)
+                return false
+            }
+
+            try FileManager.default.moveItem(at: targetURL, to: backupURL)
+            do {
+                try FileManager.default.moveItem(at: tempURL, to: targetURL)
+                try? FileManager.default.removeItem(at: backupURL)
+                try? FileManager.default.removeItem(at: sourceURL)
+                try? FileManager.default.removeItem(at: listURL)
+                return true
+            } catch {
+                if FileManager.default.fileExists(atPath: backupURL.path) {
+                    try? FileManager.default.moveItem(at: backupURL, to: targetURL)
+                }
+                try? FileManager.default.removeItem(at: tempURL)
+                try? FileManager.default.removeItem(at: listURL)
+                return false
+            }
+        } catch {
+            try? FileManager.default.removeItem(at: listURL)
+            try? FileManager.default.removeItem(at: tempURL)
+            return false
+        }
+    }
+
+    private func timestamp() -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyyMMdd-HHmmss"
+        return formatter.string(from: Date())
+    }
+
+    private func concatEscapedPath(_ path: String) -> String {
+        path.replacingOccurrences(of: "'", with: "'\\''")
+    }
+
+    private func rewriteRecordingLogFileNames(to newName: String) {
+        let targetName = SharedSettings.sanitizedRecordingName(newName)
+        let recordingsDirectory = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Movies", isDirectory: true)
+            .appendingPathComponent("1FPS録画", isDirectory: true)
+
+        guard let months = try? FileManager.default.contentsOfDirectory(
+            at: recordingsDirectory,
+            includingPropertiesForKeys: [.isDirectoryKey],
+            options: [.skipsHiddenFiles]
+        ) else { return }
+
+        for monthURL in months {
+            let values = try? monthURL.resourceValues(forKeys: [.isDirectoryKey])
+            guard values?.isDirectory == true else { continue }
+            let month = monthURL.lastPathComponent
+            guard month.range(of: #"^\d{4}-\d{2}$"#, options: .regularExpression) != nil else { continue }
+
+            let logURL = monthURL.appendingPathComponent("録画区間ログ-\(month).txt")
+            guard let content = try? String(contentsOf: logURL, encoding: .utf8) else { continue }
+
+            let rewrittenLines = content.split(separator: "\n", omittingEmptySubsequences: false).map { rawLine -> String in
+                let line = String(rawLine)
+                let columns = line.split(separator: "\t", omittingEmptySubsequences: false).map(String.init)
+                guard columns.count >= 4 else { return line }
+                let dayText = String(columns[0].prefix(10))
+                guard dayText.count == 10 else { return line }
+                let monthDay = dayText.replacingOccurrences(of: "-", with: "").suffix(4)
+                guard monthDay.count == 4 else { return line }
+
+                var updatedColumns = columns
+                updatedColumns[3] = "\(monthDay)_\(targetName).mp4"
+                return updatedColumns.joined(separator: "\t")
+            }
+
+            try? rewrittenLines.joined(separator: "\n").write(to: logURL, atomically: true, encoding: .utf8)
         }
     }
 

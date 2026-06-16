@@ -15,6 +15,7 @@ enum RecorderSettings {
 
     static var recordingName: String {
         get {
+            defaults.synchronize()
             let saved = defaults.string(forKey: recordingNameKey) ?? "録画"
             return sanitizedRecordingName(saved)
         }
@@ -25,6 +26,7 @@ enum RecorderSettings {
 
     static var showOverlay: Bool {
         get {
+            defaults.synchronize()
             if defaults.object(forKey: showOverlayKey) == nil {
                 return true
             }
@@ -36,12 +38,16 @@ enum RecorderSettings {
     }
 
     static var showMonthlyScore: Bool {
-        get { defaults.bool(forKey: showMonthlyScoreKey) }
+        get {
+            defaults.synchronize()
+            return defaults.bool(forKey: showMonthlyScoreKey)
+        }
         set { defaults.set(newValue, forKey: showMonthlyScoreKey) }
     }
 
     static var hourlyRate: Int {
         get {
+            defaults.synchronize()
             let value = defaults.integer(forKey: hourlyRateKey)
             return value > 0 ? value : 2000
         }
@@ -49,12 +55,18 @@ enum RecorderSettings {
     }
 
     static var monthlyGoal: Int {
-        get { max(0, defaults.integer(forKey: monthlyGoalKey)) }
+        get {
+            defaults.synchronize()
+            return max(0, defaults.integer(forKey: monthlyGoalKey))
+        }
         set { defaults.set(max(0, newValue), forKey: monthlyGoalKey) }
     }
 
     static var glowWhenGoalReached: Bool {
-        get { defaults.bool(forKey: glowWhenGoalReachedKey) }
+        get {
+            defaults.synchronize()
+            return defaults.bool(forKey: glowWhenGoalReachedKey)
+        }
         set { defaults.set(newValue, forKey: glowWhenGoalReachedKey) }
     }
 
@@ -78,7 +90,9 @@ enum RecorderSettings {
         let fallback = trimmed.isEmpty ? "録画" : trimmed
         let invalid = CharacterSet(charactersIn: "/:\\?%*|\"<>")
         let parts = fallback.components(separatedBy: invalid)
-        return parts.joined(separator: "-").trimmingCharacters(in: .whitespacesAndNewlines)
+        let sanitized = parts.joined(separator: "-").trimmingCharacters(in: .whitespacesAndNewlines)
+        let safeName = sanitized.isEmpty ? "録画" : sanitized
+        return String(safeName.prefix(48))
     }
 }
 
@@ -116,6 +130,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         })
         OneFPSRecorder.migrateRecordingsDirectory()
+        OneFPSRecorder.recoverOrphanedFrameDirectories()
         OneFPSRecorder.migrateSavedTextFileNames()
         OneFPSRecorder.renameExistingRecordings(from: "", to: RecorderSettings.recordingName)
         OneFPSRecorder.rewriteRecordingLogFileNames(to: RecorderSettings.recordingName)
@@ -175,7 +190,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             overlay.hide()
         case .recording(let startedAt):
             let elapsed = Int(Date().timeIntervalSince(startedAt))
-            let score = OneFPSRecorder.monthlyScore()
+            let score = OneFPSRecorder.monthlyScore(includingCurrentStartedAt: startedAt)
             let scoreText = RecorderSettings.showMonthlyScore ? " \(Self.currency(score.earnedYen))" : ""
             button.title = String(format: "録画中 1FPS %02d:%02d%@", elapsed / 60, elapsed % 60, scoreText)
             button.contentTintColor = nil
@@ -314,6 +329,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func setupCommandNotifications() {
         try? FileManager.default.createDirectory(at: Self.appSupportDirectory, withIntermediateDirectories: true)
+        lastCommandLine = currentCommandLine() ?? ""
         let timer = DispatchSource.makeTimerSource(queue: .main)
         timer.schedule(deadline: .now() + 0.5, repeating: 0.5, leeway: .milliseconds(100))
         timer.setEventHandler { [weak self] in
@@ -325,10 +341,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func pollCommandFile() {
-        guard let line = try? String(contentsOf: Self.commandFile, encoding: .utf8)
-            .split(separator: "\n")
-            .last
-            .map(String.init),
+        guard let line = currentCommandLine(),
               !line.isEmpty,
               line != lastCommandLine
         else { return }
@@ -339,6 +352,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         handleCommand(parts[1])
     }
 
+    private func currentCommandLine() -> String? {
+        try? String(contentsOf: Self.commandFile, encoding: .utf8)
+            .split(separator: "\n")
+            .last
+            .map(String.init)
+    }
+
     private func log(_ message: String) {
         let formatter = ISO8601DateFormatter()
         let line = "\(formatter.string(from: Date())) \(message)\n"
@@ -346,7 +366,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if let data = line.data(using: .utf8) {
             if FileManager.default.fileExists(atPath: logFile.path),
                let handle = try? FileHandle(forWritingTo: logFile) {
-                try? handle.seekToEnd()
+                _ = try? handle.seekToEnd()
                 try? handle.write(contentsOf: data)
                 try? handle.close()
             } else {
@@ -371,7 +391,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
             let legacyText = (try? String(contentsOf: legacyLogFile, encoding: .utf8)) ?? ""
             if !legacyText.isEmpty, let handle = try? FileHandle(forWritingTo: logFile) {
-                try? handle.seekToEnd()
+                _ = try? handle.seekToEnd()
                 try? handle.write(contentsOf: Data(legacyText.utf8))
                 try? handle.close()
             }
@@ -1019,7 +1039,7 @@ final class OneFPSRecorder: NSObject {
             ? appendSegmentToDailyFile(segmentURL: outputURL, frameDirectory: frameDirectory)
             : false
         if appendSucceeded {
-            Self.appendRecordingLog(startedAt: recordingStartedAt, endedAt: recordingEndedAt, outputURL: Self.dailyOutputURL())
+            Self.appendRecordingLog(startedAt: recordingStartedAt, endedAt: recordingEndedAt, outputURL: Self.dailyOutputURL(for: recordingEndedAt))
             Self.updateDailyTotalLog(for: recordingEndedAt)
         }
 
@@ -1060,7 +1080,11 @@ final class OneFPSRecorder: NSObject {
     }
 
     private func appendSegmentToDailyFile(segmentURL: URL, frameDirectory: URL) -> Bool {
-        let dailyURL = Self.dailyOutputURL()
+        Self.appendSegmentToDailyFile(segmentURL: segmentURL, frameDirectory: frameDirectory, date: Date())
+    }
+
+    private static func appendSegmentToDailyFile(segmentURL: URL, frameDirectory: URL, date: Date) -> Bool {
+        let dailyURL = dailyOutputURL(for: date)
         do {
             try FileManager.default.createDirectory(at: dailyURL.deletingLastPathComponent(), withIntermediateDirectories: true)
             if !FileManager.default.fileExists(atPath: dailyURL.path) {
@@ -1130,14 +1154,14 @@ final class OneFPSRecorder: NSObject {
         return formatter.string(from: Date())
     }
 
-    private static func dailyOutputURL() -> URL {
+    private static func dailyOutputURL(for date: Date = Date()) -> URL {
         let monthFormatter = DateFormatter()
         monthFormatter.dateFormat = "yyyy-MM"
         let dayFormatter = DateFormatter()
         dayFormatter.dateFormat = "MMdd"
-        let filename = "\(dayFormatter.string(from: Date()))_\(RecorderSettings.recordingName).mp4"
+        let filename = "\(dayFormatter.string(from: date))_\(RecorderSettings.recordingName).mp4"
         return recordingsDirectory
-            .appendingPathComponent(monthFormatter.string(from: Date()), isDirectory: true)
+            .appendingPathComponent(monthFormatter.string(from: date), isDirectory: true)
             .appendingPathComponent(filename)
     }
 
@@ -1163,10 +1187,73 @@ final class OneFPSRecorder: NSObject {
                 let newURL = monthURL.appendingPathComponent("\(day)_\(targetName).mp4")
                 guard fileURL.path != newURL.path else { continue }
                 if FileManager.default.fileExists(atPath: newURL.path) {
+                    _ = mergeVideoFile(fileURL, into: newURL)
                     continue
                 }
                 try? FileManager.default.moveItem(at: fileURL, to: newURL)
             }
+        }
+    }
+
+    private static func mergeVideoFile(_ sourceURL: URL, into targetURL: URL) -> Bool {
+        let directory = targetURL.deletingLastPathComponent()
+        let listURL = directory.appendingPathComponent(".rename-merge-\(timestamp())-\(UUID().uuidString).txt")
+        let tempURL = directory.appendingPathComponent(".rename-merge-\(timestamp())-\(UUID().uuidString).mp4")
+        let backupURL = directory.appendingPathComponent(".rename-backup-\(timestamp())-\(UUID().uuidString).mp4")
+        let concatList = [
+            "file '\(concatEscapedPath(targetURL.path))'",
+            "file '\(concatEscapedPath(sourceURL.path))'"
+        ].joined(separator: "\n") + "\n"
+
+        do {
+            try concatList.write(to: listURL, atomically: true, encoding: .utf8)
+            let ffmpeg = FileManager.default.homeDirectoryForCurrentUser
+                .appendingPathComponent(".local/bin/ffmpeg")
+            let process = Process()
+            process.executableURL = ffmpeg
+            process.arguments = [
+                "-hide_banner",
+                "-loglevel", "error",
+                "-f", "concat",
+                "-safe", "0",
+                "-i", listURL.path,
+                "-vf", "scale=960:600:force_original_aspect_ratio=decrease,pad=960:600:(ow-iw)/2:(oh-ih)/2,fps=1",
+                "-c:v", "libx264",
+                "-preset", "veryfast",
+                "-tune", "stillimage",
+                "-pix_fmt", "yuv420p",
+                "-an",
+                "-movflags", "+faststart",
+                tempURL.path,
+                "-y"
+            ]
+            try process.run()
+            process.waitUntilExit()
+            guard process.terminationStatus == 0 else {
+                try? FileManager.default.removeItem(at: listURL)
+                try? FileManager.default.removeItem(at: tempURL)
+                return false
+            }
+
+            try FileManager.default.moveItem(at: targetURL, to: backupURL)
+            do {
+                try FileManager.default.moveItem(at: tempURL, to: targetURL)
+                try? FileManager.default.removeItem(at: backupURL)
+                try? FileManager.default.removeItem(at: sourceURL)
+                try? FileManager.default.removeItem(at: listURL)
+                return true
+            } catch {
+                if FileManager.default.fileExists(atPath: backupURL.path) {
+                    try? FileManager.default.moveItem(at: backupURL, to: targetURL)
+                }
+                try? FileManager.default.removeItem(at: tempURL)
+                try? FileManager.default.removeItem(at: listURL)
+                return false
+            }
+        } catch {
+            try? FileManager.default.removeItem(at: listURL)
+            try? FileManager.default.removeItem(at: tempURL)
+            return false
         }
     }
 
@@ -1286,6 +1373,76 @@ final class OneFPSRecorder: NSObject {
         }
     }
 
+    static func recoverOrphanedFrameDirectories() {
+        guard let items = try? FileManager.default.contentsOfDirectory(
+            at: recordingsDirectory,
+            includingPropertiesForKeys: [.isDirectoryKey],
+            options: []
+        ) else { return }
+
+        for itemURL in items where itemURL.lastPathComponent.hasPrefix(".frames-") {
+            let values = try? itemURL.resourceValues(forKeys: [.isDirectoryKey])
+            guard values?.isDirectory == true else { continue }
+            recoverFrameDirectory(itemURL)
+        }
+    }
+
+    private static func recoverFrameDirectory(_ frameDirectory: URL) {
+        let frameNames = ((try? FileManager.default.contentsOfDirectory(atPath: frameDirectory.path)) ?? [])
+            .filter { $0.hasSuffix(".jpg") }
+            .sorted()
+        guard !frameNames.isEmpty else {
+            try? FileManager.default.removeItem(at: frameDirectory)
+            return
+        }
+
+        let recoveredAt = Date()
+        let startedAt = dateFromFrameDirectoryName(frameDirectory.lastPathComponent) ?? recoveredAt
+        let endedAt = startedAt.addingTimeInterval(TimeInterval(max(1, frameNames.count)))
+        let outputURL = frameDirectory.appendingPathComponent("recovered-\(timestamp()).mp4")
+        let ffmpeg = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".local/bin/ffmpeg")
+        let process = Process()
+        process.executableURL = ffmpeg
+        process.arguments = [
+            "-hide_banner",
+            "-loglevel", "error",
+            "-framerate", "1",
+            "-i", frameDirectory.appendingPathComponent("frame-%06d.jpg").path,
+            "-vf", "scale=960:600:force_original_aspect_ratio=decrease,pad=960:600:(ow-iw)/2:(oh-ih)/2",
+            "-c:v", "libx264",
+            "-preset", "veryfast",
+            "-tune", "stillimage",
+            "-pix_fmt", "yuv420p",
+            "-an",
+            "-movflags", "+faststart",
+            outputURL.path,
+            "-y"
+        ]
+
+        do {
+            try process.run()
+            process.waitUntilExit()
+            guard process.terminationStatus == 0,
+                  appendSegmentToDailyFile(segmentURL: outputURL, frameDirectory: frameDirectory, date: endedAt) else {
+                return
+            }
+            appendRecordingLog(startedAt: startedAt, endedAt: endedAt, outputURL: dailyOutputURL(for: endedAt))
+            updateDailyTotalLog(for: endedAt)
+            try? FileManager.default.removeItem(at: frameDirectory)
+        } catch {
+            return
+        }
+    }
+
+    private static func dateFromFrameDirectoryName(_ name: String) -> Date? {
+        guard name.hasPrefix(".frames-") else { return nil }
+        let timestampText = String(name.dropFirst(".frames-".count).prefix(15))
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyyMMdd-HHmmss"
+        return formatter.date(from: timestampText)
+    }
+
     private static func mergeDirectoryContents(from sourceURL: URL, to destinationURL: URL) {
         let sourceValues = try? sourceURL.resourceValues(forKeys: [.isDirectoryKey])
         let destinationValues = try? destinationURL.resourceValues(forKeys: [.isDirectoryKey])
@@ -1391,7 +1548,7 @@ final class OneFPSRecorder: NSObject {
                 try header.write(to: logURL, atomically: true, encoding: .utf8)
             }
             if let handle = try? FileHandle(forWritingTo: logURL) {
-                try? handle.seekToEnd()
+                _ = try? handle.seekToEnd()
                 try? handle.write(contentsOf: Data(line.utf8))
                 try? handle.close()
             }
@@ -1455,8 +1612,12 @@ final class OneFPSRecorder: NSObject {
         }
     }
 
-    static func monthlyScore(for date: Date = Date()) -> (seconds: Int, earnedYen: Int) {
-        let seconds = workSeconds(in: monthlyLogURL(for: date)) { _ in true }
+    static func monthlyScore(for date: Date = Date(), includingCurrentStartedAt startedAt: Date? = nil) -> (seconds: Int, earnedYen: Int) {
+        var seconds = workSeconds(in: monthlyLogURL(for: date)) { _ in true }
+        if let startedAt,
+           Calendar.current.isDate(startedAt, equalTo: date, toGranularity: .month) {
+            seconds += max(0, Int(Date().timeIntervalSince(startedAt)))
+        }
         let earned = Int((Double(seconds) / 3600.0 * Double(RecorderSettings.hourlyRate)).rounded())
         return (seconds, earned)
     }
@@ -1545,7 +1706,7 @@ if CommandLine.arguments.count >= 3, CommandLine.arguments[1] == "--command" {
     let line = "\(Date().timeIntervalSince1970) \(CommandLine.arguments[2])\n"
     if FileManager.default.fileExists(atPath: commandFile.path),
        let handle = try? FileHandle(forWritingTo: commandFile) {
-        try? handle.seekToEnd()
+        _ = try? handle.seekToEnd()
         try? handle.write(contentsOf: Data(line.utf8))
         try? handle.close()
     } else {
