@@ -982,6 +982,7 @@ final class OneFPSRecorder: NSObject {
     private var frameIndex = 0
     private var firstFrameCapturedAt: Date?
     private var lastFrameCapturedAt: Date?
+    private var lastMonthlyScoreSyncAt = Date.distantPast
     private(set) var isEncoding = false
     private var encodingJobCount = 0
 
@@ -1015,6 +1016,8 @@ final class OneFPSRecorder: NSObject {
         let now = Date()
         try createSegment(startedAt: now)
         startedAt = now
+        lastMonthlyScoreSyncAt = Date.distantPast
+        Self.updateMonthlyScoreLog(for: now, includingCurrentStartedAt: now)
 
         status(.recording(startedAt ?? Date()))
         startDisplayTimer()
@@ -1137,9 +1140,17 @@ final class OneFPSRecorder: NSObject {
         timer.setEventHandler { [weak self] in
             guard let self, let startedAt = self.startedAt else { return }
             self.status(.recording(startedAt))
+            self.syncMonthlyScoreDuringRecordingIfNeeded(startedAt: startedAt)
         }
         displayTimer = timer
         timer.resume()
+    }
+
+    private func syncMonthlyScoreDuringRecordingIfNeeded(startedAt: Date) {
+        let now = Date()
+        guard now.timeIntervalSince(lastMonthlyScoreSyncAt) >= 60 else { return }
+        lastMonthlyScoreSyncAt = now
+        Self.updateMonthlyScoreLog(for: now, includingCurrentStartedAt: startedAt)
     }
 
     private func stopDisplayTimer() {
@@ -1975,7 +1986,7 @@ final class OneFPSRecorder: NSObject {
     }
 
     @discardableResult
-    static func updateMonthlyScoreLog(for date: Date = Date()) -> Bool {
+    static func updateMonthlyScoreLog(for date: Date = Date(), includingCurrentStartedAt startedAt: Date? = nil) -> Bool {
         let sourceURL = monthlyLogURL(for: date)
         let fallbackSourceURL = legacyMonthlyLogURL(for: date)
         let content = (try? String(contentsOf: sourceURL, encoding: .utf8))
@@ -1989,6 +2000,10 @@ final class OneFPSRecorder: NSObject {
             guard columns.count >= 3 else { continue }
             seconds += parsedDurationSeconds(columns[2])
             count += 1
+        }
+        if let startedAt,
+           Calendar.current.isDate(startedAt, equalTo: date, toGranularity: .month) {
+            seconds += max(0, Int(Date().timeIntervalSince(startedAt)))
         }
 
         let earned = Int((Double(seconds) / 3600.0 * Double(RecorderSettings.hourlyRate)).rounded())
