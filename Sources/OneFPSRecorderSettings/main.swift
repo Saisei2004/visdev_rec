@@ -181,6 +181,7 @@ final class SettingsDelegate: NSObject, NSApplicationDelegate {
         SharedSettings.glowWhenGoalReached = glowCheckbox.state == .on
         renameExistingRecordings(to: newName)
         rewriteRecordingLogFileNames(to: newName)
+        syncAllDerivedLogs()
         NSApp.terminate(nil)
     }
 
@@ -331,6 +332,101 @@ final class SettingsDelegate: NSObject, NSApplicationDelegate {
 
             try? rewrittenLines.joined(separator: "\n").write(to: logURL, atomically: true, encoding: .utf8)
         }
+    }
+
+    private var recordingsDirectory: URL {
+        FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Movies", isDirectory: true)
+            .appendingPathComponent("1FPS録画", isDirectory: true)
+    }
+
+    private func syncAllDerivedLogs() {
+        guard let months = try? FileManager.default.contentsOfDirectory(
+            at: recordingsDirectory,
+            includingPropertiesForKeys: [.isDirectoryKey],
+            options: [.skipsHiddenFiles]
+        ) else { return }
+
+        for monthURL in months {
+            let values = try? monthURL.resourceValues(forKeys: [.isDirectoryKey])
+            guard values?.isDirectory == true else { continue }
+            let month = monthURL.lastPathComponent
+            guard month.range(of: #"^\d{4}-\d{2}$"#, options: .regularExpression) != nil else { continue }
+            syncDerivedLogs(monthURL: monthURL, month: month)
+        }
+    }
+
+    private func syncDerivedLogs(monthURL: URL, month: String) {
+        let logURL = monthURL.appendingPathComponent("録画区間ログ-\(month).txt")
+        guard let content = try? String(contentsOf: logURL, encoding: .utf8) else { return }
+
+        var dailyTotals: [String: (seconds: Int, count: Int)] = [:]
+        var monthSeconds = 0
+        var monthCount = 0
+        for line in content.split(separator: "\n").dropFirst() {
+            let columns = line.split(separator: "\t", omittingEmptySubsequences: false).map(String.init)
+            guard columns.count >= 3 else { continue }
+            let seconds = parsedDurationSeconds(columns[2])
+            guard seconds > 0 else { continue }
+            let day = String(columns[0].prefix(10))
+            let current = dailyTotals[day] ?? (0, 0)
+            dailyTotals[day] = (current.seconds + seconds, current.count + 1)
+            monthSeconds += seconds
+            monthCount += 1
+        }
+
+        let dailyLines = dailyTotals.keys.sorted().map { day -> String in
+            let value = dailyTotals[day] ?? (0, 0)
+            return "\(day)\t\(formattedDuration(value.seconds))\t\(value.seconds)秒\t\(value.count)"
+        }
+        let dailyOutput = "日付\t合計作業時間\t合計秒数\t記録回数\n" + dailyLines.joined(separator: "\n") + "\n"
+        try? dailyOutput.write(
+            to: monthURL.appendingPathComponent("日別合計作業時間-\(month).txt"),
+            atomically: true,
+            encoding: .utf8
+        )
+
+        let earned = Int((Double(monthSeconds) / 3600.0 * Double(SharedSettings.hourlyRate)).rounded())
+        let scoreOutput = [
+            "項目\t値",
+            "月\t\(month)",
+            "合計作業時間\t\(formattedDuration(monthSeconds))",
+            "合計秒数\t\(monthSeconds)秒",
+            "記録回数\t\(monthCount)",
+            "係数\t\(SharedSettings.hourlyRate)円/時間",
+            "月間スコア\t\(earned)円",
+            "月末ライン\t\(SharedSettings.monthlyGoal)円",
+            "達成\t\(SharedSettings.monthlyGoal > 0 && earned >= SharedSettings.monthlyGoal ? "はい" : "いいえ")"
+        ].joined(separator: "\n") + "\n"
+        try? scoreOutput.write(
+            to: monthURL.appendingPathComponent("月間スコア-\(month).txt"),
+            atomically: true,
+            encoding: .utf8
+        )
+    }
+
+    private func parsedDurationSeconds(_ text: String) -> Int {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.hasSuffix("秒") {
+            return Int(trimmed.dropLast()) ?? 0
+        }
+        if trimmed.hasSuffix("s") {
+            return Int(trimmed.dropLast()) ?? 0
+        }
+        return Int(trimmed) ?? 0
+    }
+
+    private func formattedDuration(_ seconds: Int) -> String {
+        let hours = seconds / 3600
+        let minutes = (seconds % 3600) / 60
+        let remainingSeconds = seconds % 60
+        if hours > 0 {
+            return "\(hours)時間\(minutes)分\(remainingSeconds)秒"
+        }
+        if minutes > 0 {
+            return "\(minutes)分\(remainingSeconds)秒"
+        }
+        return "\(remainingSeconds)秒"
     }
 
     private func recordingDay(from basename: String) -> String? {

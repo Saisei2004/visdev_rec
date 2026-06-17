@@ -137,7 +137,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         OneFPSRecorder.migrateSavedTextFileNames()
         OneFPSRecorder.renameExistingRecordings(from: "", to: RecorderSettings.recordingName)
         OneFPSRecorder.rewriteRecordingLogFileNames(to: RecorderSettings.recordingName)
-        OneFPSRecorder.updateDailyTotalLog()
+        OneFPSRecorder.syncAllDerivedLogs()
 
         setupStatusItem()
         overlay = RecordingOverlay(stopAction: { [weak self] in
@@ -861,6 +861,15 @@ final class OneFPSRecorder: NSObject {
         let outputURL: URL
         let startedAt: Date
         let endedAt: Date
+        let id: String
+    }
+
+    private struct SegmentMetadata: Codable {
+        var id: String
+        var startedAt: Date
+        var endedAt: Date
+        var outputFilename: String
+        var videoAppended: Bool
     }
 
     init(status: @escaping (RecorderState) -> Void) {
@@ -967,7 +976,8 @@ final class OneFPSRecorder: NSObject {
             frameDirectory: frameDirectory,
             outputURL: outputURL,
             startedAt: segmentStartedAt ?? startedAt ?? endedAt,
-            endedAt: endedAt
+            endedAt: endedAt,
+            id: UUID().uuidString
         )
         self.frameDirectory = nil
         self.outputURL = nil
@@ -1091,6 +1101,16 @@ final class OneFPSRecorder: NSObject {
             }
             return
         }
+        Self.writeSegmentMetadata(
+            SegmentMetadata(
+                id: segment.id,
+                startedAt: segment.startedAt,
+                endedAt: segment.endedAt,
+                outputFilename: Self.dailyOutputURL(for: segment.endedAt).lastPathComponent,
+                videoAppended: false
+            ),
+            in: frameDirectory
+        )
 
         let frameNames = (try? FileManager.default.contentsOfDirectory(atPath: frameDirectory.path)
             .filter { $0.hasSuffix(".jpg") }
@@ -1141,13 +1161,34 @@ final class OneFPSRecorder: NSObject {
         try? process.run()
         process.waitUntilExit()
 
-        let appendSucceeded = process.terminationStatus == 0
-            ? Self.appendSegmentToDailyFile(segmentURL: outputURL, frameDirectory: frameDirectory, date: segment.endedAt)
-            : false
+        var appendSucceeded = false
+        if process.terminationStatus == 0 {
+            appendSucceeded = Self.appendSegmentToDailyFile(segmentURL: outputURL, frameDirectory: frameDirectory, date: segment.endedAt)
+            if appendSucceeded {
+                Self.writeSegmentMetadata(
+                    SegmentMetadata(
+                        id: segment.id,
+                        startedAt: segment.startedAt,
+                        endedAt: segment.endedAt,
+                        outputFilename: Self.dailyOutputURL(for: segment.endedAt).lastPathComponent,
+                        videoAppended: true
+                    ),
+                    in: frameDirectory
+                )
+            }
+        }
         if appendSucceeded {
-            Self.appendRecordingLog(startedAt: segment.startedAt, endedAt: segment.endedAt, outputURL: Self.dailyOutputURL(for: segment.endedAt))
-            Self.updateDailyTotalLog(for: segment.endedAt)
-            try? FileManager.default.removeItem(at: frameDirectory)
+            let logSucceeded = Self.appendRecordingLog(
+                startedAt: segment.startedAt,
+                endedAt: segment.endedAt,
+                outputURL: Self.dailyOutputURL(for: segment.endedAt),
+                segmentID: segment.id
+            )
+            && Self.syncDerivedLogs(for: segment.endedAt)
+            if logSucceeded {
+                try? FileManager.default.removeItem(at: frameDirectory)
+            }
+            appendSucceeded = logSucceeded
         }
 
         DispatchQueue.main.async {
@@ -1370,6 +1411,7 @@ final class OneFPSRecorder: NSObject {
 
             try? rewrittenLines.joined(separator: "\n").write(to: logURL, atomically: true, encoding: .utf8)
         }
+        syncAllDerivedLogs()
     }
 
     private static func recordingDay(from basename: String) -> String? {
@@ -1404,6 +1446,11 @@ final class OneFPSRecorder: NSObject {
             .appendingPathComponent("日別合計作業時間-\(monthString(from: date)).txt")
     }
 
+    private static func monthlyScoreLogURL(for date: Date = Date()) -> URL {
+        monthlyDirectory(for: date)
+            .appendingPathComponent("月間スコア-\(monthString(from: date)).txt")
+    }
+
     private static func legacyDailyTotalLogURL(for date: Date = Date()) -> URL {
         monthlyDirectory(for: date)
             .appendingPathComponent("daily-total-\(monthString(from: date)).txt")
@@ -1418,6 +1465,33 @@ final class OneFPSRecorder: NSObject {
         let monthFormatter = DateFormatter()
         monthFormatter.dateFormat = "yyyy-MM"
         return monthFormatter.string(from: date)
+    }
+
+    private static func segmentMetadataURL(in frameDirectory: URL) -> URL {
+        frameDirectory.appendingPathComponent("segment-info.json")
+    }
+
+    private static func writeSegmentMetadata(_ metadata: SegmentMetadata, in frameDirectory: URL) {
+        do {
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+            encoder.dateEncodingStrategy = .iso8601
+            let data = try encoder.encode(metadata)
+            try data.write(to: segmentMetadataURL(in: frameDirectory), options: .atomic)
+        } catch {
+            return
+        }
+    }
+
+    private static func readSegmentMetadata(in frameDirectory: URL) -> SegmentMetadata? {
+        do {
+            let data = try Data(contentsOf: segmentMetadataURL(in: frameDirectory))
+            let decoder = JSONDecoder()
+            decoder.dateDecodingStrategy = .iso8601
+            return try decoder.decode(SegmentMetadata.self, from: data)
+        } catch {
+            return nil
+        }
     }
 
     static func migrateRecordingsDirectory() {
@@ -1475,8 +1549,10 @@ final class OneFPSRecorder: NSObject {
         }
 
         let recoveredAt = Date()
-        let startedAt = dateFromFrameDirectoryName(frameDirectory.lastPathComponent) ?? recoveredAt
-        let endedAt = startedAt.addingTimeInterval(TimeInterval(max(1, frameNames.count)))
+        let metadata = readSegmentMetadata(in: frameDirectory)
+        let startedAt = metadata?.startedAt ?? dateFromFrameDirectoryName(frameDirectory.lastPathComponent) ?? recoveredAt
+        let endedAt = metadata?.endedAt ?? startedAt.addingTimeInterval(TimeInterval(max(1, frameNames.count)))
+        let segmentID = metadata?.id ?? UUID().uuidString
         let outputURL = frameDirectory.appendingPathComponent("recovered-\(timestamp()).mp4")
         let listURL = frameDirectory.appendingPathComponent("frames.txt")
         let frameList = frameNames
@@ -1486,36 +1562,52 @@ final class OneFPSRecorder: NSObject {
             return
         }
 
-        let ffmpeg = FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent(".local/bin/ffmpeg")
-        let process = Process()
-        process.executableURL = ffmpeg
-        process.arguments = [
-            "-hide_banner",
-            "-loglevel", "error",
-            "-f", "concat",
-            "-safe", "0",
-            "-i", listURL.path,
-            "-vf", "scale=960:600:force_original_aspect_ratio=decrease,pad=960:600:(ow-iw)/2:(oh-ih)/2",
-            "-c:v", "libx264",
-            "-preset", "veryfast",
-            "-tune", "stillimage",
-            "-pix_fmt", "yuv420p",
-            "-an",
-            "-movflags", "+faststart",
-            outputURL.path,
-            "-y"
-        ]
-
         do {
-            try process.run()
-            process.waitUntilExit()
-            guard process.terminationStatus == 0,
-                  appendSegmentToDailyFile(segmentURL: outputURL, frameDirectory: frameDirectory, date: endedAt) else {
-                return
+            if metadata?.videoAppended != true {
+                let ffmpeg = FileManager.default.homeDirectoryForCurrentUser
+                    .appendingPathComponent(".local/bin/ffmpeg")
+                let process = Process()
+                process.executableURL = ffmpeg
+                process.arguments = [
+                    "-hide_banner",
+                    "-loglevel", "error",
+                    "-f", "concat",
+                    "-safe", "0",
+                    "-i", listURL.path,
+                    "-vf", "scale=960:600:force_original_aspect_ratio=decrease,pad=960:600:(ow-iw)/2:(oh-ih)/2",
+                    "-c:v", "libx264",
+                    "-preset", "veryfast",
+                    "-tune", "stillimage",
+                    "-pix_fmt", "yuv420p",
+                    "-an",
+                    "-movflags", "+faststart",
+                    outputURL.path,
+                    "-y"
+                ]
+
+                try process.run()
+                process.waitUntilExit()
+                guard process.terminationStatus == 0,
+                      appendSegmentToDailyFile(segmentURL: outputURL, frameDirectory: frameDirectory, date: endedAt) else {
+                    return
+                }
+                writeSegmentMetadata(
+                    SegmentMetadata(
+                        id: segmentID,
+                        startedAt: startedAt,
+                        endedAt: endedAt,
+                        outputFilename: dailyOutputURL(for: endedAt).lastPathComponent,
+                        videoAppended: true
+                    ),
+                    in: frameDirectory
+                )
             }
-            appendRecordingLog(startedAt: startedAt, endedAt: endedAt, outputURL: dailyOutputURL(for: endedAt))
-            updateDailyTotalLog(for: endedAt)
+            guard appendRecordingLog(
+                startedAt: startedAt,
+                endedAt: endedAt,
+                outputURL: dailyOutputURL(for: endedAt),
+                segmentID: segmentID
+            ), syncDerivedLogs(for: endedAt) else { return }
             try? FileManager.default.removeItem(at: frameDirectory)
         } catch {
             return
@@ -1615,42 +1707,80 @@ final class OneFPSRecorder: NSObject {
         }
     }
 
-    private static func appendRecordingLog(startedAt: Date, endedAt: Date, outputURL: URL) {
+    @discardableResult
+    private static func appendRecordingLog(startedAt: Date, endedAt: Date, outputURL: URL, segmentID: String) -> Bool {
         let logURL = monthlyLogURL(for: endedAt)
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "ja_JP")
         formatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
         let duration = max(0, Int(endedAt.timeIntervalSince(startedAt).rounded()))
-        let line = [
+        let columns = [
             formatter.string(from: startedAt),
             formatter.string(from: endedAt),
             "\(duration)秒",
-            outputURL.lastPathComponent
-        ].joined(separator: "\t") + "\n"
+            outputURL.lastPathComponent,
+            segmentID
+        ]
+        let line = columns.joined(separator: "\t")
 
         do {
             try FileManager.default.createDirectory(at: logURL.deletingLastPathComponent(), withIntermediateDirectories: true)
-            if !FileManager.default.fileExists(atPath: logURL.path) {
-                let header = "開始\t終了\t時間\tファイル\n"
-                try header.write(to: logURL, atomically: true, encoding: .utf8)
+            let existingText = (try? String(contentsOf: logURL, encoding: .utf8)) ?? ""
+            var lines = existingText
+                .split(separator: "\n", omittingEmptySubsequences: true)
+                .map(String.init)
+                .filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+            if lines.first?.hasPrefix("開始\t終了\t時間\tファイル") != true {
+                lines.insert("開始\t終了\t時間\tファイル\tID", at: 0)
+            } else if lines.first == "開始\t終了\t時間\tファイル" {
+                lines[0] = "開始\t終了\t時間\tファイル\tID"
             }
-            if let handle = try? FileHandle(forWritingTo: logURL) {
-                _ = try? handle.seekToEnd()
-                try? handle.write(contentsOf: Data(line.utf8))
-                try? handle.close()
+            if lines.dropFirst().contains(where: { row in
+                let parts = row.split(separator: "\t", omittingEmptySubsequences: false).map(String.init)
+                return parts.count >= 5 && parts[4] == segmentID
+            }) {
+                return true
             }
+            lines.append(line)
+            try (lines.joined(separator: "\n") + "\n").write(to: logURL, atomically: true, encoding: .utf8)
+            return true
         } catch {
-            return
+            return false
         }
     }
 
-    static func updateDailyTotalLog(for date: Date = Date()) {
+    @discardableResult
+    static func syncDerivedLogs(for date: Date = Date()) -> Bool {
+        updateDailyTotalLog(for: date) && updateMonthlyScoreLog(for: date)
+    }
+
+    static func syncAllDerivedLogs() {
+        guard let months = try? FileManager.default.contentsOfDirectory(
+            at: recordingsDirectory,
+            includingPropertiesForKeys: [.isDirectoryKey],
+            options: [.skipsHiddenFiles]
+        ) else { return }
+
+        for monthURL in months {
+            let values = try? monthURL.resourceValues(forKeys: [.isDirectoryKey])
+            guard values?.isDirectory == true else { continue }
+            guard monthURL.lastPathComponent.range(of: #"^\d{4}-\d{2}$"#, options: .regularExpression) != nil else { continue }
+            let formatter = DateFormatter()
+            formatter.dateFormat = "yyyy-MM"
+            if let date = formatter.date(from: monthURL.lastPathComponent) {
+                _ = syncDerivedLogs(for: date)
+            }
+        }
+    }
+
+    @discardableResult
+    static func updateDailyTotalLog(for date: Date = Date()) -> Bool {
         let sourceURL = monthlyLogURL(for: date)
         let outputURL = dailyTotalLogURL(for: date)
         let fallbackSourceURL = legacyMonthlyLogURL(for: date)
         let content = (try? String(contentsOf: sourceURL, encoding: .utf8))
             ?? (try? String(contentsOf: fallbackSourceURL, encoding: .utf8))
-        guard let content else { return }
+        guard let content else { return false }
 
         var totals: [String: (seconds: Int, count: Int)] = [:]
         for line in content.split(separator: "\n").dropFirst() {
@@ -1685,8 +1815,49 @@ final class OneFPSRecorder: NSObject {
         do {
             try FileManager.default.createDirectory(at: outputURL.deletingLastPathComponent(), withIntermediateDirectories: true)
             try output.write(to: outputURL, atomically: true, encoding: .utf8)
+            return true
         } catch {
-            return
+            return false
+        }
+    }
+
+    @discardableResult
+    static func updateMonthlyScoreLog(for date: Date = Date()) -> Bool {
+        let sourceURL = monthlyLogURL(for: date)
+        let fallbackSourceURL = legacyMonthlyLogURL(for: date)
+        let content = (try? String(contentsOf: sourceURL, encoding: .utf8))
+            ?? (try? String(contentsOf: fallbackSourceURL, encoding: .utf8))
+        guard let content else { return false }
+
+        var seconds = 0
+        var count = 0
+        for line in content.split(separator: "\n").dropFirst() {
+            let columns = line.split(separator: "\t", omittingEmptySubsequences: false).map(String.init)
+            guard columns.count >= 3 else { continue }
+            seconds += parsedDurationSeconds(columns[2])
+            count += 1
+        }
+
+        let earned = Int((Double(seconds) / 3600.0 * Double(RecorderSettings.hourlyRate)).rounded())
+        let output = [
+            "項目\t値",
+            "月\t\(monthString(from: date))",
+            "合計作業時間\t\(formattedDuration(seconds))",
+            "合計秒数\t\(seconds)秒",
+            "記録回数\t\(count)",
+            "係数\t\(RecorderSettings.hourlyRate)円/時間",
+            "月間スコア\t\(earned)円",
+            "月末ライン\t\(RecorderSettings.monthlyGoal)円",
+            "達成\t\(RecorderSettings.monthlyGoal > 0 && earned >= RecorderSettings.monthlyGoal ? "はい" : "いいえ")"
+        ].joined(separator: "\n") + "\n"
+
+        do {
+            let outputURL = monthlyScoreLogURL(for: date)
+            try FileManager.default.createDirectory(at: outputURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try output.write(to: outputURL, atomically: true, encoding: .utf8)
+            return true
+        } catch {
+            return false
         }
     }
 
