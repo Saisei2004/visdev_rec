@@ -1092,14 +1092,28 @@ final class OneFPSRecorder: NSObject {
             return
         }
 
-        let frameCount = (try? FileManager.default.contentsOfDirectory(atPath: frameDirectory.path)
+        let frameNames = (try? FileManager.default.contentsOfDirectory(atPath: frameDirectory.path)
             .filter { $0.hasSuffix(".jpg") }
-            .count) ?? 0
+            .sorted()) ?? []
+        let frameCount = frameNames.count
 
         guard frameCount > 0 else {
             try? FileManager.default.removeItem(at: frameDirectory)
             DispatchQueue.main.async {
                 self.finishEncoding(success: true, errorMessage: nil)
+            }
+            return
+        }
+
+        let listURL = frameDirectory.appendingPathComponent("frames.txt")
+        let frameList = frameNames
+            .map { "file '\(Self.concatEscapedPath(frameDirectory.appendingPathComponent($0).path))'\nduration 1" }
+            .joined(separator: "\n") + "\n"
+        do {
+            try frameList.write(to: listURL, atomically: true, encoding: .utf8)
+        } catch {
+            DispatchQueue.main.async {
+                self.finishEncoding(success: false, errorMessage: "録画フレーム一覧の作成に失敗しました。")
             }
             return
         }
@@ -1111,8 +1125,9 @@ final class OneFPSRecorder: NSObject {
         process.arguments = [
             "-hide_banner",
             "-loglevel", "error",
-            "-framerate", "1",
-            "-i", frameDirectory.appendingPathComponent("frame-%06d.jpg").path,
+            "-f", "concat",
+            "-safe", "0",
+            "-i", listURL.path,
             "-vf", "scale=960:600:force_original_aspect_ratio=decrease,pad=960:600:(ow-iw)/2:(oh-ih)/2",
             "-c:v", "libx264",
             "-preset", "veryfast",
@@ -1463,6 +1478,14 @@ final class OneFPSRecorder: NSObject {
         let startedAt = dateFromFrameDirectoryName(frameDirectory.lastPathComponent) ?? recoveredAt
         let endedAt = startedAt.addingTimeInterval(TimeInterval(max(1, frameNames.count)))
         let outputURL = frameDirectory.appendingPathComponent("recovered-\(timestamp()).mp4")
+        let listURL = frameDirectory.appendingPathComponent("frames.txt")
+        let frameList = frameNames
+            .map { "file '\(concatEscapedPath(frameDirectory.appendingPathComponent($0).path))'\nduration 1" }
+            .joined(separator: "\n") + "\n"
+        guard (try? frameList.write(to: listURL, atomically: true, encoding: .utf8)) != nil else {
+            return
+        }
+
         let ffmpeg = FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent(".local/bin/ffmpeg")
         let process = Process()
@@ -1470,8 +1493,9 @@ final class OneFPSRecorder: NSObject {
         process.arguments = [
             "-hide_banner",
             "-loglevel", "error",
-            "-framerate", "1",
-            "-i", frameDirectory.appendingPathComponent("frame-%06d.jpg").path,
+            "-f", "concat",
+            "-safe", "0",
+            "-i", listURL.path,
             "-vf", "scale=960:600:force_original_aspect_ratio=decrease,pad=960:600:(ow-iw)/2:(oh-ih)/2",
             "-c:v", "libx264",
             "-preset", "veryfast",
