@@ -10,6 +10,9 @@ enum RecorderSettings {
     private static let hourlyRateKey = "hourlyRate"
     private static let monthlyGoalKey = "monthlyGoal"
     private static let glowWhenGoalReachedKey = "glowWhenGoalReached"
+    private static let pauseOnSleepKey = "pauseOnSleep"
+    private static let pauseOnMouseIdleKey = "pauseOnMouseIdle"
+    private static let mouseIdleMinutesKey = "mouseIdleMinutes"
     private static let startMessageIndexKey = "startMessageIndex"
     private static let stopMessageIndexKey = "stopMessageIndex"
 
@@ -73,6 +76,34 @@ enum RecorderSettings {
         set { defaults.set(newValue, forKey: glowWhenGoalReachedKey) }
     }
 
+    static var pauseOnSleep: Bool {
+        get {
+            defaults.synchronize()
+            if defaults.object(forKey: pauseOnSleepKey) == nil {
+                return true
+            }
+            return defaults.bool(forKey: pauseOnSleepKey)
+        }
+        set { defaults.set(newValue, forKey: pauseOnSleepKey) }
+    }
+
+    static var pauseOnMouseIdle: Bool {
+        get {
+            defaults.synchronize()
+            return defaults.bool(forKey: pauseOnMouseIdleKey)
+        }
+        set { defaults.set(newValue, forKey: pauseOnMouseIdleKey) }
+    }
+
+    static var mouseIdleMinutes: Int {
+        get {
+            defaults.synchronize()
+            let value = defaults.integer(forKey: mouseIdleMinutesKey)
+            return value > 0 ? value : 5
+        }
+        set { defaults.set(min(max(1, newValue), 180), forKey: mouseIdleMinutesKey) }
+    }
+
     static func nextStartMessageIndex(modulo: Int) -> Int {
         nextIndex(forKey: startMessageIndexKey, modulo: modulo)
     }
@@ -118,6 +149,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var lockFileHandle: FileHandle?
     private var settingsWindowController: SettingsWindowController?
     private var overlayMessage = ""
+    private var activityTimer: DispatchSourceTimer?
+    private var lastMouseLocation: CGPoint?
+    private var lastMouseMovedAt = Date()
+    private var autoPausedBySleep = false
+    private var autoPausedByMouseIdle = false
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
@@ -144,6 +180,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self?.stopRecordingFromOverlay()
         })
         setupCommandNotifications()
+        setupAutomaticPauseHandling()
         applyStatus(.idle)
         log("OneFPSRecorder launched")
     }
@@ -153,6 +190,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             recorder.stop()
         }
         commandTimer?.cancel()
+        activityTimer?.cancel()
+        NSWorkspace.shared.notificationCenter.removeObserver(self)
         if let lockFileHandle {
             flock(lockFileHandle.fileDescriptor, LOCK_UN)
             try? lockFileHandle.close()
@@ -259,9 +298,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         lastToggleAt = now
         log("Toggle recording requested")
         if recorder.isRecording {
+            autoPausedBySleep = false
+            autoPausedByMouseIdle = false
             overlayMessage = Self.stopMessage()
             recorder.stop()
         } else {
+            autoPausedBySleep = false
+            autoPausedByMouseIdle = false
             overlayMessage = Self.startMessage()
             Task {
                 do {
@@ -278,6 +321,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func stopRecordingFromOverlay() {
         guard recorder.isRecording else { return }
+        autoPausedBySleep = false
+        autoPausedByMouseIdle = false
         log("Overlay stop requested")
         overlayMessage = Self.stopMessage()
         recorder.stop()
@@ -304,6 +349,90 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             toggleRecording()
         default:
             break
+        }
+    }
+
+    private func setupAutomaticPauseHandling() {
+        NSWorkspace.shared.notificationCenter.addObserver(
+            self,
+            selector: #selector(workspaceWillSleep),
+            name: NSWorkspace.willSleepNotification,
+            object: nil
+        )
+        NSWorkspace.shared.notificationCenter.addObserver(
+            self,
+            selector: #selector(workspaceDidWake),
+            name: NSWorkspace.didWakeNotification,
+            object: nil
+        )
+
+        lastMouseLocation = currentMouseLocation()
+        lastMouseMovedAt = Date()
+        let timer = DispatchSource.makeTimerSource(queue: .main)
+        timer.schedule(deadline: .now() + 1.0, repeating: 1.0, leeway: .milliseconds(200))
+        timer.setEventHandler { [weak self] in
+            self?.checkMouseActivity()
+        }
+        activityTimer = timer
+        timer.resume()
+    }
+
+    @objc private func workspaceWillSleep() {
+        guard RecorderSettings.pauseOnSleep, recorder.isRecording else { return }
+        log("Auto pause before sleep")
+        autoPausedBySleep = true
+        overlayMessage = "スリープのため一時停止"
+        recorder.stop()
+    }
+
+    @objc private func workspaceDidWake() {
+        guard autoPausedBySleep else { return }
+        log("Auto resume after wake")
+        autoPausedBySleep = false
+        overlayMessage = Self.startMessage()
+        startRecordingAfterAutomaticPause()
+    }
+
+    private func checkMouseActivity() {
+        guard let currentLocation = currentMouseLocation() else { return }
+        defer { lastMouseLocation = currentLocation }
+
+        if let lastMouseLocation,
+           hypot(currentLocation.x - lastMouseLocation.x, currentLocation.y - lastMouseLocation.y) >= 2 {
+            lastMouseMovedAt = Date()
+            if autoPausedByMouseIdle {
+                log("Auto resume after mouse movement")
+                autoPausedByMouseIdle = false
+                overlayMessage = Self.startMessage()
+                startRecordingAfterAutomaticPause()
+            }
+            return
+        }
+
+        guard RecorderSettings.pauseOnMouseIdle, recorder.isRecording else { return }
+        let idleSeconds = Date().timeIntervalSince(lastMouseMovedAt)
+        guard idleSeconds >= TimeInterval(RecorderSettings.mouseIdleMinutes * 60) else { return }
+        log("Auto pause after mouse idle: \(Int(idleSeconds))s")
+        autoPausedByMouseIdle = true
+        overlayMessage = "無操作のため一時停止"
+        recorder.stop()
+    }
+
+    private func currentMouseLocation() -> CGPoint? {
+        CGEvent(source: nil)?.location
+    }
+
+    private func startRecordingAfterAutomaticPause() {
+        guard !recorder.isRecording else { return }
+        Task {
+            do {
+                try await recorder.start()
+            } catch {
+                log("Auto resume failed: \(error.localizedDescription)")
+                await MainActor.run {
+                    applyStatus(.error(error.localizedDescription))
+                }
+            }
         }
     }
 
@@ -851,6 +980,8 @@ final class OneFPSRecorder: NSObject {
     private var frameDirectory: URL?
     private var outputURL: URL?
     private var frameIndex = 0
+    private var firstFrameCapturedAt: Date?
+    private var lastFrameCapturedAt: Date?
     private(set) var isEncoding = false
     private var encodingJobCount = 0
 
@@ -944,6 +1075,8 @@ final class OneFPSRecorder: NSObject {
         self.outputURL = frameDirectory.appendingPathComponent("segment-\(Self.timestamp())-\(UUID().uuidString).mp4")
         self.segmentStartedAt = startedAt
         frameIndex = 0
+        firstFrameCapturedAt = nil
+        lastFrameCapturedAt = nil
     }
 
     private func cleanupCurrentSegment() {
@@ -953,6 +1086,8 @@ final class OneFPSRecorder: NSObject {
         frameDirectory = nil
         outputURL = nil
         frameIndex = 0
+        firstFrameCapturedAt = nil
+        lastFrameCapturedAt = nil
         segmentStartedAt = nil
     }
 
@@ -969,19 +1104,25 @@ final class OneFPSRecorder: NSObject {
             self.frameDirectory = nil
             self.outputURL = nil
             frameIndex = 0
+            firstFrameCapturedAt = nil
+            lastFrameCapturedAt = nil
             segmentStartedAt = nil
             return nil
         }
+        let actualStartedAt = firstFrameCapturedAt ?? segmentStartedAt ?? startedAt ?? endedAt
+        let actualEndedAt = (lastFrameCapturedAt ?? actualStartedAt).addingTimeInterval(1)
         let segment = PendingSegment(
             frameDirectory: frameDirectory,
             outputURL: outputURL,
-            startedAt: segmentStartedAt ?? startedAt ?? endedAt,
-            endedAt: endedAt,
+            startedAt: actualStartedAt,
+            endedAt: max(actualEndedAt, actualStartedAt.addingTimeInterval(1)),
             id: UUID().uuidString
         )
         self.frameDirectory = nil
         self.outputURL = nil
         frameIndex = 0
+        firstFrameCapturedAt = nil
+        lastFrameCapturedAt = nil
         segmentStartedAt = nil
         if !keepRecording {
             startedAt = nil
@@ -1023,10 +1164,12 @@ final class OneFPSRecorder: NSObject {
     }
 
     private func captureFrame() {
+        rotateIfDateChangedBeforeCapture()
         guard let frameDirectory else { return }
         let index = frameIndex
         frameIndex += 1
         let frameURL = frameDirectory.appendingPathComponent(String(format: "frame-%06d.jpg", index))
+        let capturedAt = Date()
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")
         if let captureRectangle = Self.displayBoundsContainingMouse() {
@@ -1041,10 +1184,20 @@ final class OneFPSRecorder: NSObject {
         }
         try? process.run()
         process.waitUntilExit()
+        guard process.terminationStatus == 0, FileManager.default.fileExists(atPath: frameURL.path) else { return }
+        if firstFrameCapturedAt == nil {
+            firstFrameCapturedAt = capturedAt
+        }
+        lastFrameCapturedAt = capturedAt
 
         if frameIndex >= Self.maxSegmentFrames {
             rotateSegmentFromCaptureQueue()
         }
+    }
+
+    private func rotateIfDateChangedBeforeCapture() {
+        guard let segmentStartedAt, !Calendar.current.isDate(segmentStartedAt, inSameDayAs: Date()) else { return }
+        rotateSegmentFromCaptureQueue()
     }
 
     private func rotateSegmentFromCaptureQueue() {

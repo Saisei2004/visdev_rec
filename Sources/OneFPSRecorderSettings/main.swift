@@ -8,6 +8,9 @@ enum SharedSettings {
     private static let hourlyRateKey = "hourlyRate"
     private static let monthlyGoalKey = "monthlyGoal"
     private static let glowWhenGoalReachedKey = "glowWhenGoalReached"
+    private static let pauseOnSleepKey = "pauseOnSleep"
+    private static let pauseOnMouseIdleKey = "pauseOnMouseIdle"
+    private static let mouseIdleMinutesKey = "mouseIdleMinutes"
 
     static var recordingName: String {
         get {
@@ -59,6 +62,29 @@ enum SharedSettings {
         set { defaults.set(newValue, forKey: glowWhenGoalReachedKey) }
     }
 
+    static var pauseOnSleep: Bool {
+        get {
+            if defaults.object(forKey: pauseOnSleepKey) == nil {
+                return true
+            }
+            return defaults.bool(forKey: pauseOnSleepKey)
+        }
+        set { defaults.set(newValue, forKey: pauseOnSleepKey) }
+    }
+
+    static var pauseOnMouseIdle: Bool {
+        get { defaults.bool(forKey: pauseOnMouseIdleKey) }
+        set { defaults.set(newValue, forKey: pauseOnMouseIdleKey) }
+    }
+
+    static var mouseIdleMinutes: Int {
+        get {
+            let value = defaults.integer(forKey: mouseIdleMinutesKey)
+            return value > 0 ? value : 5
+        }
+        set { defaults.set(min(max(1, newValue), 180), forKey: mouseIdleMinutesKey) }
+    }
+
     static func sanitizedRecordingName(_ name: String) -> String {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
         let fallback = trimmed.isEmpty ? "録画" : trimmed
@@ -79,6 +105,9 @@ final class SettingsDelegate: NSObject, NSApplicationDelegate {
     private let hourlyRateField = NSTextField(string: "\(SharedSettings.hourlyRate)")
     private let monthlyGoalField = NSTextField(string: "\(SharedSettings.monthlyGoal)")
     private let glowCheckbox = NSButton(checkboxWithTitle: "目標達成時に光らせる", target: nil, action: nil)
+    private let pauseOnSleepCheckbox = NSButton(checkboxWithTitle: "スリープ時に一時停止する", target: nil, action: nil)
+    private let pauseOnMouseIdleCheckbox = NSButton(checkboxWithTitle: "マウス無操作で一時停止する", target: nil, action: nil)
+    private let mouseIdleMinutesField = NSTextField(string: "\(SharedSettings.mouseIdleMinutes)")
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.regular)
@@ -90,7 +119,7 @@ final class SettingsDelegate: NSObject, NSApplicationDelegate {
 
     private func buildWindow() {
         window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 500, height: 340),
+            contentRect: NSRect(x: 0, y: 0, width: 500, height: 430),
             styleMask: [.titled, .closable],
             backing: .buffered,
             defer: false
@@ -99,52 +128,69 @@ final class SettingsDelegate: NSObject, NSApplicationDelegate {
         window.isReleasedWhenClosed = false
         window.delegate = self
 
-        let content = NSView(frame: NSRect(x: 0, y: 0, width: 500, height: 340))
+        let content = NSView(frame: NSRect(x: 0, y: 0, width: 500, height: 430))
         window.contentView = content
 
         let title = NSTextField(labelWithString: "保存名")
         title.font = NSFont.systemFont(ofSize: 13, weight: .semibold)
-        title.frame = NSRect(x: 30, y: 270, width: 80, height: 20)
+        title.frame = NSRect(x: 30, y: 360, width: 80, height: 20)
 
-        nameField.frame = NSRect(x: 130, y: 264, width: 320, height: 28)
+        nameField.frame = NSRect(x: 130, y: 354, width: 320, height: 28)
         nameField.placeholderString = "録画"
 
         let hint = NSTextField(labelWithString: "ファイル名は MMDD_名前.mp4 になります。名前変更時は既存動画も更新します。")
         hint.font = NSFont.systemFont(ofSize: 11)
         hint.textColor = .secondaryLabelColor
-        hint.frame = NSRect(x: 130, y: 236, width: 340, height: 18)
+        hint.frame = NSRect(x: 130, y: 326, width: 340, height: 18)
 
         overlayCheckbox.state = SharedSettings.showOverlay ? .on : .off
-        overlayCheckbox.frame = NSRect(x: 130, y: 204, width: 240, height: 22)
+        overlayCheckbox.frame = NSRect(x: 130, y: 294, width: 240, height: 22)
 
         let scoreTitle = NSTextField(labelWithString: "月間スコア")
         scoreTitle.font = NSFont.systemFont(ofSize: 13, weight: .semibold)
-        scoreTitle.frame = NSRect(x: 30, y: 160, width: 90, height: 20)
+        scoreTitle.frame = NSRect(x: 30, y: 250, width: 90, height: 20)
 
         monthlyScoreCheckbox.state = SharedSettings.showMonthlyScore ? .on : .off
-        monthlyScoreCheckbox.frame = NSRect(x: 130, y: 160, width: 200, height: 22)
+        monthlyScoreCheckbox.frame = NSRect(x: 130, y: 250, width: 200, height: 22)
 
         let hourlyRateLabel = NSTextField(labelWithString: "係数")
         hourlyRateLabel.font = NSFont.systemFont(ofSize: 12)
-        hourlyRateLabel.frame = NSRect(x: 130, y: 124, width: 60, height: 20)
+        hourlyRateLabel.frame = NSRect(x: 130, y: 214, width: 60, height: 20)
 
-        hourlyRateField.frame = NSRect(x: 190, y: 118, width: 100, height: 28)
+        hourlyRateField.frame = NSRect(x: 190, y: 208, width: 100, height: 28)
         hourlyRateField.placeholderString = "2000"
 
         let goalLabel = NSTextField(labelWithString: "月末ライン")
         goalLabel.font = NSFont.systemFont(ofSize: 12)
-        goalLabel.frame = NSRect(x: 310, y: 124, width: 78, height: 20)
+        goalLabel.frame = NSRect(x: 310, y: 214, width: 78, height: 20)
 
-        monthlyGoalField.frame = NSRect(x: 390, y: 118, width: 80, height: 28)
+        monthlyGoalField.frame = NSRect(x: 390, y: 208, width: 80, height: 28)
         monthlyGoalField.placeholderString = "100000"
 
         glowCheckbox.state = SharedSettings.glowWhenGoalReached ? .on : .off
-        glowCheckbox.frame = NSRect(x: 130, y: 88, width: 220, height: 22)
+        glowCheckbox.frame = NSRect(x: 130, y: 178, width: 220, height: 22)
 
         let scoreHint = NSTextField(labelWithString: "係数の標準値は 2000。月末ラインを超えると録画中パネルを発光できます。")
         scoreHint.font = NSFont.systemFont(ofSize: 11)
         scoreHint.textColor = .secondaryLabelColor
-        scoreHint.frame = NSRect(x: 130, y: 62, width: 340, height: 18)
+        scoreHint.frame = NSRect(x: 130, y: 152, width: 340, height: 18)
+
+        let pauseTitle = NSTextField(labelWithString: "一時停止")
+        pauseTitle.font = NSFont.systemFont(ofSize: 13, weight: .semibold)
+        pauseTitle.frame = NSRect(x: 30, y: 112, width: 90, height: 20)
+
+        pauseOnSleepCheckbox.state = SharedSettings.pauseOnSleep ? .on : .off
+        pauseOnSleepCheckbox.frame = NSRect(x: 130, y: 112, width: 220, height: 22)
+
+        pauseOnMouseIdleCheckbox.state = SharedSettings.pauseOnMouseIdle ? .on : .off
+        pauseOnMouseIdleCheckbox.frame = NSRect(x: 130, y: 82, width: 220, height: 22)
+
+        let idleMinutesLabel = NSTextField(labelWithString: "無操作分")
+        idleMinutesLabel.font = NSFont.systemFont(ofSize: 12)
+        idleMinutesLabel.frame = NSRect(x: 330, y: 84, width: 60, height: 20)
+
+        mouseIdleMinutesField.frame = NSRect(x: 390, y: 78, width: 80, height: 28)
+        mouseIdleMinutesField.placeholderString = "5"
 
         let closeButton = NSButton(title: "閉じる", target: self, action: #selector(closePressed))
         closeButton.bezelStyle = .rounded
@@ -167,6 +213,11 @@ final class SettingsDelegate: NSObject, NSApplicationDelegate {
         content.addSubview(monthlyGoalField)
         content.addSubview(glowCheckbox)
         content.addSubview(scoreHint)
+        content.addSubview(pauseTitle)
+        content.addSubview(pauseOnSleepCheckbox)
+        content.addSubview(pauseOnMouseIdleCheckbox)
+        content.addSubview(idleMinutesLabel)
+        content.addSubview(mouseIdleMinutesField)
         content.addSubview(closeButton)
         content.addSubview(saveButton)
     }
@@ -179,6 +230,9 @@ final class SettingsDelegate: NSObject, NSApplicationDelegate {
         SharedSettings.hourlyRate = Int(hourlyRateField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)) ?? 2000
         SharedSettings.monthlyGoal = Int(monthlyGoalField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)) ?? 100000
         SharedSettings.glowWhenGoalReached = glowCheckbox.state == .on
+        SharedSettings.pauseOnSleep = pauseOnSleepCheckbox.state == .on
+        SharedSettings.pauseOnMouseIdle = pauseOnMouseIdleCheckbox.state == .on
+        SharedSettings.mouseIdleMinutes = Int(mouseIdleMinutesField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)) ?? 5
         renameExistingRecordings(to: newName)
         rewriteRecordingLogFileNames(to: newName)
         syncAllDerivedLogs()
