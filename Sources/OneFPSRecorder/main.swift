@@ -833,7 +833,7 @@ final class DraggableDotView: NSView {
 }
 
 final class OneFPSRecorder: NSObject {
-    private static let maxSegmentFrames = 3600
+    private static let maxSegmentFrames = 900
     static let recordingsDirectory = FileManager.default.homeDirectoryForCurrentUser
         .appendingPathComponent("Movies", isDirectory: true)
         .appendingPathComponent("1FPS録画", isDirectory: true)
