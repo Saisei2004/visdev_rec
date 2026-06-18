@@ -173,6 +173,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         OneFPSRecorder.migrateSavedTextFileNames()
         OneFPSRecorder.renameExistingRecordings(from: "", to: RecorderSettings.recordingName)
         OneFPSRecorder.rewriteRecordingLogFileNames(to: RecorderSettings.recordingName)
+        OneFPSRecorder.reconcileLogsWithDailyVideos()
         OneFPSRecorder.syncAllDerivedLogs()
 
         setupStatusItem()
@@ -1994,6 +1995,85 @@ final class OneFPSRecorder: NSObject {
                 _ = syncDerivedLogs(for: date)
             }
         }
+    }
+
+    static func reconcileLogsWithDailyVideos() {
+        guard let months = try? FileManager.default.contentsOfDirectory(
+            at: recordingsDirectory,
+            includingPropertiesForKeys: [.isDirectoryKey],
+            options: [.skipsHiddenFiles]
+        ) else { return }
+
+        for monthURL in months {
+            let values = try? monthURL.resourceValues(forKeys: [.isDirectoryKey])
+            guard values?.isDirectory == true else { continue }
+            let month = monthURL.lastPathComponent
+            guard month.range(of: #"^\d{4}-\d{2}$"#, options: .regularExpression) != nil else { continue }
+            reconcileMonthLogWithDailyVideos(monthURL: monthURL, month: month)
+        }
+    }
+
+    private static func reconcileMonthLogWithDailyVideos(monthURL: URL, month: String) {
+        let logURL = monthURL.appendingPathComponent("録画区間ログ-\(month).txt")
+        guard let content = try? String(contentsOf: logURL, encoding: .utf8) else { return }
+        var lines = content.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
+        guard let header = lines.first, header.hasPrefix("開始\t終了\t時間\tファイル") else { return }
+
+        var changed = false
+        let grouped = Dictionary(grouping: lines.indices.dropFirst()) { index -> String in
+            let columns = lines[index].split(separator: "\t", omittingEmptySubsequences: false).map(String.init)
+            return columns.count >= 4 ? columns[3] : ""
+        }
+
+        for (filename, indices) in grouped where filename.hasSuffix(".mp4") {
+            let videoURL = monthURL.appendingPathComponent(filename)
+            let targetSeconds = videoFrameCount(videoURL)
+            guard targetSeconds > 0 else { continue }
+            let currentSeconds = indices.reduce(0) { total, index in
+                let columns = lines[index].split(separator: "\t", omittingEmptySubsequences: false).map(String.init)
+                return columns.count >= 3 ? total + parsedDurationSeconds(columns[2]) : total
+            }
+            let difference = targetSeconds - currentSeconds
+            guard difference != 0 else { continue }
+            if applyDurationDifference(difference, to: Array(indices.reversed()), lines: &lines) {
+                changed = true
+            }
+        }
+
+        guard changed else { return }
+        let backupURL = monthURL.appendingPathComponent("録画区間ログ-\(month).before-auto-reconcile-\(timestamp()).txt")
+        do {
+            try content.write(to: backupURL, atomically: true, encoding: .utf8)
+            try lines.joined(separator: "\n").write(to: logURL, atomically: true, encoding: .utf8)
+        } catch {
+            return
+        }
+    }
+
+    private static func applyDurationDifference(_ difference: Int, to indices: [Int], lines: inout [String]) -> Bool {
+        var remaining = difference
+        var changed = false
+
+        for index in indices {
+            guard remaining != 0 else { break }
+            var columns = lines[index].split(separator: "\t", omittingEmptySubsequences: false).map(String.init)
+            guard columns.count >= 3 else { continue }
+            let currentSeconds = parsedDurationSeconds(columns[2])
+            let delta: Int
+            if remaining < 0 {
+                delta = max(remaining, -currentSeconds)
+            } else {
+                delta = remaining
+            }
+            let adjustedSeconds = currentSeconds + delta
+            guard adjustedSeconds >= 0 else { continue }
+            columns[2] = "\(adjustedSeconds)秒"
+            lines[index] = columns.joined(separator: "\t")
+            remaining -= delta
+            changed = true
+        }
+
+        return changed && remaining == 0
     }
 
     @discardableResult
