@@ -2595,6 +2595,7 @@ final class OneFPSRecorder: NSObject {
     ) -> (seconds: Int, count: Int, earnedYen: Int) {
         var seconds = 0
         var count = 0
+        var latestLoggedEndAt: Date?
         for row in rows {
             let columns = row.split(separator: "\t", omittingEmptySubsequences: false).map(String.init)
             guard columns.count >= 3 else { continue }
@@ -2613,6 +2614,11 @@ final class OneFPSRecorder: NSObject {
             } else {
                 rowEndedAt = rowStartedAt.addingTimeInterval(TimeInterval(duration))
             }
+            if let currentLatest = latestLoggedEndAt {
+                latestLoggedEndAt = max(currentLatest, rowEndedAt)
+            } else {
+                latestLoggedEndAt = rowEndedAt
+            }
             let includedSeconds = overlapSeconds(start: rowStartedAt, end: rowEndedAt, resetAt: resetAt)
             guard includedSeconds > 0 else { continue }
             seconds += includedSeconds
@@ -2620,7 +2626,8 @@ final class OneFPSRecorder: NSObject {
         }
         if let startedAt,
            Calendar.current.isDate(startedAt, equalTo: date, toGranularity: .month) {
-            seconds += overlapSeconds(start: startedAt, end: Date(), resetAt: resetAt)
+            let unloggedStartAt = max(startedAt, latestLoggedEndAt ?? startedAt)
+            seconds += overlapSeconds(start: unloggedStartAt, end: Date(), resetAt: resetAt)
         }
         let earned = Int((Double(seconds) / 3600.0 * Double(RecorderSettings.hourlyRate)).rounded())
         return (seconds, count, earned)

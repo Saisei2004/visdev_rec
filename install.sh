@@ -67,6 +67,12 @@ ensure_command codesign
 ensure_ffmpeg
 swift build -c release
 
+if find "$HOME/Movies/1FPS録画" -maxdepth 1 -type d -name '.frames-*' 2>/dev/null | grep -q .; then
+  echo "録画中の一時フレームがあります。録画停止後にもう一度インストールしてください。"
+  echo "保存中にアプリを入れ替えないよう、ここで止めています。"
+  exit 2
+fi
+
 rm -rf "$APP_DIR"
 mkdir -p "$APP_DIR/Contents/MacOS" "$APP_DIR/Contents/Resources"
 cp "$BUILD_DIR/$APP_NAME" "$APP_DIR/Contents/MacOS/$APP_NAME"
