@@ -982,6 +982,7 @@ final class OneFPSRecorder: NSObject {
     private var frameIndex = 0
     private var firstFrameCapturedAt: Date?
     private var lastFrameCapturedAt: Date?
+    private var capturedFrameCount = 0
     private var lastMonthlyScoreSyncAt = Date.distantPast
     private(set) var isEncoding = false
     private var encodingJobCount = 0
@@ -994,6 +995,7 @@ final class OneFPSRecorder: NSObject {
         let startedAt: Date
         let endedAt: Date
         let id: String
+        let frameCount: Int
     }
 
     private struct SegmentMetadata: Codable {
@@ -1002,6 +1004,7 @@ final class OneFPSRecorder: NSObject {
         var endedAt: Date
         var outputFilename: String
         var videoAppended: Bool
+        var frameCount: Int?
     }
 
     init(status: @escaping (RecorderState) -> Void) {
@@ -1080,6 +1083,7 @@ final class OneFPSRecorder: NSObject {
         frameIndex = 0
         firstFrameCapturedAt = nil
         lastFrameCapturedAt = nil
+        capturedFrameCount = 0
     }
 
     private func cleanupCurrentSegment() {
@@ -1091,6 +1095,7 @@ final class OneFPSRecorder: NSObject {
         frameIndex = 0
         firstFrameCapturedAt = nil
         lastFrameCapturedAt = nil
+        capturedFrameCount = 0
         segmentStartedAt = nil
     }
 
@@ -1109,23 +1114,27 @@ final class OneFPSRecorder: NSObject {
             frameIndex = 0
             firstFrameCapturedAt = nil
             lastFrameCapturedAt = nil
+            capturedFrameCount = 0
             segmentStartedAt = nil
             return nil
         }
         let actualStartedAt = firstFrameCapturedAt ?? segmentStartedAt ?? startedAt ?? endedAt
-        let actualEndedAt = (lastFrameCapturedAt ?? actualStartedAt).addingTimeInterval(1)
+        let actualFrameCount = capturedFrameCount
+        let actualEndedAt = actualStartedAt.addingTimeInterval(TimeInterval(max(1, actualFrameCount)))
         let segment = PendingSegment(
             frameDirectory: frameDirectory,
             outputURL: outputURL,
             startedAt: actualStartedAt,
             endedAt: max(actualEndedAt, actualStartedAt.addingTimeInterval(1)),
-            id: UUID().uuidString
+            id: UUID().uuidString,
+            frameCount: actualFrameCount
         )
         self.frameDirectory = nil
         self.outputURL = nil
         frameIndex = 0
         firstFrameCapturedAt = nil
         lastFrameCapturedAt = nil
+        capturedFrameCount = 0
         segmentStartedAt = nil
         if !keepRecording {
             startedAt = nil
@@ -1200,6 +1209,7 @@ final class OneFPSRecorder: NSObject {
             firstFrameCapturedAt = capturedAt
         }
         lastFrameCapturedAt = capturedAt
+        capturedFrameCount += 1
 
         if frameIndex >= Self.maxSegmentFrames {
             rotateSegmentFromCaptureQueue()
@@ -1271,7 +1281,8 @@ final class OneFPSRecorder: NSObject {
                 startedAt: segment.startedAt,
                 endedAt: segment.endedAt,
                 outputFilename: Self.dailyOutputURL(for: segment.endedAt).lastPathComponent,
-                videoAppended: false
+                videoAppended: false,
+                frameCount: segment.frameCount
             ),
             in: frameDirectory
         )
@@ -1327,7 +1338,12 @@ final class OneFPSRecorder: NSObject {
 
         var appendSucceeded = false
         if process.terminationStatus == 0 {
-            appendSucceeded = Self.appendSegmentToDailyFile(segmentURL: outputURL, frameDirectory: frameDirectory, date: segment.endedAt)
+            appendSucceeded = Self.appendSegmentToDailyFile(
+                segmentURL: outputURL,
+                frameDirectory: frameDirectory,
+                date: segment.endedAt,
+                expectedAddedFrames: max(1, frameCount)
+            )
             if appendSucceeded {
                 Self.writeSegmentMetadata(
                     SegmentMetadata(
@@ -1335,7 +1351,8 @@ final class OneFPSRecorder: NSObject {
                         startedAt: segment.startedAt,
                         endedAt: segment.endedAt,
                         outputFilename: Self.dailyOutputURL(for: segment.endedAt).lastPathComponent,
-                        videoAppended: true
+                        videoAppended: true,
+                        frameCount: frameCount
                     ),
                     in: frameDirectory
                 )
@@ -1366,23 +1383,18 @@ final class OneFPSRecorder: NSObject {
         }
     }
 
-    private static func appendSegmentToDailyFile(segmentURL: URL, frameDirectory: URL, date: Date) -> Bool {
+    private static func appendSegmentToDailyFile(segmentURL: URL, frameDirectory: URL, date: Date, expectedAddedFrames: Int) -> Bool {
         let dailyURL = dailyOutputURL(for: date)
         do {
             try FileManager.default.createDirectory(at: dailyURL.deletingLastPathComponent(), withIntermediateDirectories: true)
             if !FileManager.default.fileExists(atPath: dailyURL.path) {
                 try FileManager.default.moveItem(at: segmentURL, to: dailyURL)
-                return true
+                return videoFrameCount(dailyURL) >= expectedAddedFrames
             }
 
-            let listURL = frameDirectory.appendingPathComponent("concat.txt")
+            let originalFrameCount = videoFrameCount(dailyURL)
             let tempDailyURL = dailyURL.deletingLastPathComponent()
                 .appendingPathComponent(".daily-\(Self.timestamp())-\(UUID().uuidString).mp4")
-            let concatList = [
-                "file '\(Self.concatEscapedPath(dailyURL.path))'",
-                "file '\(Self.concatEscapedPath(segmentURL.path))'"
-            ].joined(separator: "\n") + "\n"
-            try concatList.write(to: listURL, atomically: true, encoding: .utf8)
 
             let ffmpeg = FileManager.default.homeDirectoryForCurrentUser
                 .appendingPathComponent(".local/bin/ffmpeg")
@@ -1391,10 +1403,11 @@ final class OneFPSRecorder: NSObject {
             process.arguments = [
                 "-hide_banner",
                 "-loglevel", "error",
-                "-f", "concat",
-                "-safe", "0",
-                "-i", listURL.path,
-                "-vf", "scale=960:600:force_original_aspect_ratio=decrease,pad=960:600:(ow-iw)/2:(oh-ih)/2,fps=1",
+                "-i", dailyURL.path,
+                "-i", segmentURL.path,
+                "-filter_complex",
+                "[0:v][1:v]concat=n=2:v=1:a=0,scale=960:600:force_original_aspect_ratio=decrease,pad=960:600:(ow-iw)/2:(oh-ih)/2,fps=1[v]",
+                "-map", "[v]",
                 "-c:v", "libx264",
                 "-preset", "veryfast",
                 "-tune", "stillimage",
@@ -1410,12 +1423,22 @@ final class OneFPSRecorder: NSObject {
                 try? FileManager.default.removeItem(at: tempDailyURL)
                 return false
             }
+            guard videoFrameCount(tempDailyURL) >= originalFrameCount + expectedAddedFrames else {
+                try? FileManager.default.removeItem(at: tempDailyURL)
+                return false
+            }
 
             let backupURL = dailyURL.deletingLastPathComponent()
                 .appendingPathComponent(".daily-backup-\(Self.timestamp())-\(UUID().uuidString).mp4")
             try FileManager.default.moveItem(at: dailyURL, to: backupURL)
             do {
                 try FileManager.default.moveItem(at: tempDailyURL, to: dailyURL)
+                guard videoFrameCount(dailyURL) >= originalFrameCount + expectedAddedFrames else {
+                    try? FileManager.default.moveItem(at: dailyURL, to: tempDailyURL)
+                    try? FileManager.default.moveItem(at: backupURL, to: dailyURL)
+                    try? FileManager.default.removeItem(at: tempDailyURL)
+                    return false
+                }
                 try? FileManager.default.removeItem(at: backupURL)
                 try? FileManager.default.removeItem(at: segmentURL)
                 return true
@@ -1428,6 +1451,35 @@ final class OneFPSRecorder: NSObject {
             }
         } catch {
             return false
+        }
+    }
+
+    private static func videoFrameCount(_ url: URL) -> Int {
+        guard FileManager.default.fileExists(atPath: url.path) else { return 0 }
+        let ffprobe = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".local/bin/ffprobe")
+        let process = Process()
+        let pipe = Pipe()
+        process.executableURL = ffprobe
+        process.arguments = [
+            "-v", "error",
+            "-select_streams", "v:0",
+            "-show_entries", "stream=nb_frames",
+            "-of", "default=noprint_wrappers=1:nokey=1",
+            url.path
+        ]
+        process.standardOutput = pipe
+        process.standardError = Pipe()
+        do {
+            try process.run()
+            process.waitUntilExit()
+            guard process.terminationStatus == 0 else { return 0 }
+            let data = pipe.fileHandleForReading.readDataToEndOfFile()
+            let text = String(data: data, encoding: .utf8)?
+                .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            return Int(text) ?? 0
+        } catch {
+            return 0
         }
     }
 
@@ -1714,8 +1766,9 @@ final class OneFPSRecorder: NSObject {
 
         let recoveredAt = Date()
         let metadata = readSegmentMetadata(in: frameDirectory)
+        let recoveredFrameCount = max(1, metadata?.frameCount ?? frameNames.count)
         let startedAt = metadata?.startedAt ?? dateFromFrameDirectoryName(frameDirectory.lastPathComponent) ?? recoveredAt
-        let endedAt = metadata?.endedAt ?? startedAt.addingTimeInterval(TimeInterval(max(1, frameNames.count)))
+        let endedAt = startedAt.addingTimeInterval(TimeInterval(recoveredFrameCount))
         let segmentID = metadata?.id ?? UUID().uuidString
         let outputURL = frameDirectory.appendingPathComponent("recovered-\(timestamp()).mp4")
         let listURL = frameDirectory.appendingPathComponent("frames.txt")
@@ -1752,7 +1805,12 @@ final class OneFPSRecorder: NSObject {
                 try process.run()
                 process.waitUntilExit()
                 guard process.terminationStatus == 0,
-                      appendSegmentToDailyFile(segmentURL: outputURL, frameDirectory: frameDirectory, date: endedAt) else {
+                      appendSegmentToDailyFile(
+                        segmentURL: outputURL,
+                        frameDirectory: frameDirectory,
+                        date: endedAt,
+                        expectedAddedFrames: frameNames.count
+                      ) else {
                     return
                 }
                 writeSegmentMetadata(
@@ -1761,7 +1819,8 @@ final class OneFPSRecorder: NSObject {
                         startedAt: startedAt,
                         endedAt: endedAt,
                         outputFilename: dailyOutputURL(for: endedAt).lastPathComponent,
-                        videoAppended: true
+                        videoAppended: true,
+                        frameCount: frameNames.count
                     ),
                     in: frameDirectory
                 )
