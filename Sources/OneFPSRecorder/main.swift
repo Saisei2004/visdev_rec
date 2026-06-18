@@ -3,13 +3,14 @@ import CoreGraphics
 import Darwin
 
 enum RecorderSettings {
-    private static let defaults = UserDefaults(suiteName: "local.codex.OneFPSRecorder") ?? .standard
+    private static let defaults = UserDefaults.standard
     private static let recordingNameKey = "recordingName"
     private static let showOverlayKey = "showRecordingOverlay"
     private static let showPauseOverlayKey = "showPauseOverlay"
     private static let showMonthlyScoreKey = "showMonthlyScore"
     private static let hourlyRateKey = "hourlyRate"
     private static let monthlyGoalKey = "monthlyGoal"
+    private static let monthlyScoreResetAtPrefix = "monthlyScoreResetAt."
     private static let glowWhenGoalReachedKey = "glowWhenGoalReached"
     private static let pauseOnSleepKey = "pauseOnSleep"
     private static let pauseOnMouseIdleKey = "pauseOnMouseIdle"
@@ -80,6 +81,25 @@ enum RecorderSettings {
             return max(0, defaults.integer(forKey: monthlyGoalKey))
         }
         set { defaults.set(max(0, newValue), forKey: monthlyGoalKey) }
+    }
+
+    static func monthlyScoreResetAt(for date: Date = Date()) -> Date? {
+        defaults.synchronize()
+        let key = monthlyScoreResetAtPrefix + monthKey(from: date)
+        guard let text = defaults.string(forKey: key) else { return nil }
+        return ISO8601DateFormatter().date(from: text)
+    }
+
+    static func resetMonthlyScore(for date: Date = Date(), at resetAt: Date = Date()) {
+        let key = monthlyScoreResetAtPrefix + monthKey(from: date)
+        defaults.set(ISO8601DateFormatter().string(from: resetAt), forKey: key)
+        defaults.synchronize()
+    }
+
+    private static func monthKey(from date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM"
+        return formatter.string(from: date)
     }
 
     static var glowWhenGoalReached: Bool {
@@ -2508,32 +2528,29 @@ final class OneFPSRecorder: NSObject {
     static func updateMonthlyScoreLog(for date: Date = Date(), includingCurrentStartedAt startedAt: Date? = nil) -> Bool {
         let rows = recordingLogRows(for: date)
         guard !rows.isEmpty else { return false }
+        let resetAt = RecorderSettings.monthlyScoreResetAt(for: date)
+        let score = monthlyScoreValues(
+            for: date,
+            rows: rows,
+            resetAt: resetAt,
+            includingCurrentStartedAt: startedAt
+        )
 
-        var seconds = 0
-        var count = 0
-        for line in rows {
-            let columns = line.split(separator: "\t", omittingEmptySubsequences: false).map(String.init)
-            guard columns.count >= 3 else { continue }
-            seconds += parsedDurationSeconds(columns[2])
-            count += 1
-        }
-        if let startedAt,
-           Calendar.current.isDate(startedAt, equalTo: date, toGranularity: .month) {
-            seconds += max(0, Int(Date().timeIntervalSince(startedAt)))
-        }
-
-        let earned = Int((Double(seconds) / 3600.0 * Double(RecorderSettings.hourlyRate)).rounded())
-        let output = [
+        var outputLines = [
             "項目\t値",
             "月\t\(monthString(from: date))",
-            "合計作業時間\t\(formattedDuration(seconds))",
-            "合計秒数\t\(seconds)秒",
-            "記録回数\t\(count)",
+            "合計作業時間\t\(formattedDuration(score.seconds))",
+            "合計秒数\t\(score.seconds)秒",
+            "記録回数\t\(score.count)",
             "係数\t\(RecorderSettings.hourlyRate)円/時間",
-            "月間スコア\t\(earned)円",
+            "月間スコア\t\(score.earnedYen)円",
             "月末ライン\t\(RecorderSettings.monthlyGoal)円",
-            "達成\t\(RecorderSettings.monthlyGoal > 0 && earned >= RecorderSettings.monthlyGoal ? "はい" : "いいえ")"
-        ].joined(separator: "\n") + "\n"
+            "達成\t\(RecorderSettings.monthlyGoal > 0 && score.earnedYen >= RecorderSettings.monthlyGoal ? "はい" : "いいえ")"
+        ]
+        if let resetAt {
+            outputLines.append("初期化日時\t\(displayDateTime(resetAt))")
+        }
+        let output = outputLines.joined(separator: "\n") + "\n"
 
         do {
             let outputURL = monthlyScoreLogURL(for: date)
@@ -2555,13 +2572,72 @@ final class OneFPSRecorder: NSObject {
     }
 
     static func monthlyScore(for date: Date = Date(), includingCurrentStartedAt startedAt: Date? = nil) -> (seconds: Int, earnedYen: Int) {
-        var seconds = workSeconds(in: recordingLogRows(for: date)) { _ in true }
+        let score = monthlyScoreValues(
+            for: date,
+            rows: recordingLogRows(for: date),
+            resetAt: RecorderSettings.monthlyScoreResetAt(for: date),
+            includingCurrentStartedAt: startedAt
+        )
+        return (score.seconds, score.earnedYen)
+    }
+
+    private static func monthlyScoreValues(
+        for date: Date,
+        rows: [String],
+        resetAt: Date?,
+        includingCurrentStartedAt startedAt: Date?
+    ) -> (seconds: Int, count: Int, earnedYen: Int) {
+        var seconds = 0
+        var count = 0
+        for row in rows {
+            let columns = row.split(separator: "\t", omittingEmptySubsequences: false).map(String.init)
+            guard columns.count >= 3 else { continue }
+            let duration = parsedDurationSeconds(columns[2])
+            guard duration > 0 else { continue }
+            guard let rowStartedAt = parseLogDate(columns[0]) else {
+                if resetAt == nil {
+                    seconds += duration
+                    count += 1
+                }
+                continue
+            }
+            let rowEndedAt: Date
+            if columns.count >= 2, let parsedEndedAt = parseLogDate(columns[1]) {
+                rowEndedAt = parsedEndedAt
+            } else {
+                rowEndedAt = rowStartedAt.addingTimeInterval(TimeInterval(duration))
+            }
+            let includedSeconds = overlapSeconds(start: rowStartedAt, end: rowEndedAt, resetAt: resetAt)
+            guard includedSeconds > 0 else { continue }
+            seconds += includedSeconds
+            count += 1
+        }
         if let startedAt,
            Calendar.current.isDate(startedAt, equalTo: date, toGranularity: .month) {
-            seconds += max(0, Int(Date().timeIntervalSince(startedAt)))
+            seconds += overlapSeconds(start: startedAt, end: Date(), resetAt: resetAt)
         }
         let earned = Int((Double(seconds) / 3600.0 * Double(RecorderSettings.hourlyRate)).rounded())
-        return (seconds, earned)
+        return (seconds, count, earned)
+    }
+
+    private static func overlapSeconds(start: Date, end: Date, resetAt: Date?) -> Int {
+        let effectiveStart = max(start, resetAt ?? start)
+        guard end > effectiveStart else { return 0 }
+        return max(0, Int(end.timeIntervalSince(effectiveStart).rounded()))
+    }
+
+    private static func parseLogDate(_ text: String) -> Date? {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "ja_JP")
+        formatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
+        return formatter.date(from: text)
+    }
+
+    private static func displayDateTime(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "ja_JP")
+        formatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
+        return formatter.string(from: date)
     }
 
     private static func workSeconds(in rows: [String], matching include: (String) -> Bool) -> Int {

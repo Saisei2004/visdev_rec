@@ -1,13 +1,14 @@
 import AppKit
 
 enum SharedSettings {
-    private static let defaults = UserDefaults(suiteName: "local.codex.OneFPSRecorder") ?? .standard
+    private static let defaults = UserDefaults.standard
     private static let recordingNameKey = "recordingName"
     private static let showOverlayKey = "showRecordingOverlay"
     private static let showPauseOverlayKey = "showPauseOverlay"
     private static let showMonthlyScoreKey = "showMonthlyScore"
     private static let hourlyRateKey = "hourlyRate"
     private static let monthlyGoalKey = "monthlyGoal"
+    private static let monthlyScoreResetAtPrefix = "monthlyScoreResetAt."
     private static let glowWhenGoalReachedKey = "glowWhenGoalReached"
     private static let pauseOnSleepKey = "pauseOnSleep"
     private static let pauseOnMouseIdleKey = "pauseOnMouseIdle"
@@ -70,6 +71,25 @@ enum SharedSettings {
         set { defaults.set(max(0, newValue), forKey: monthlyGoalKey) }
     }
 
+    static func monthlyScoreResetAt(for date: Date = Date()) -> Date? {
+        defaults.synchronize()
+        let key = monthlyScoreResetAtPrefix + monthKey(from: date)
+        guard let text = defaults.string(forKey: key) else { return nil }
+        return ISO8601DateFormatter().date(from: text)
+    }
+
+    static func resetMonthlyScore(for date: Date = Date(), at resetAt: Date = Date()) {
+        let key = monthlyScoreResetAtPrefix + monthKey(from: date)
+        defaults.set(ISO8601DateFormatter().string(from: resetAt), forKey: key)
+        defaults.synchronize()
+    }
+
+    private static func monthKey(from date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM"
+        return formatter.string(from: date)
+    }
+
     static var glowWhenGoalReached: Bool {
         get { defaults.bool(forKey: glowWhenGoalReachedKey) }
         set { defaults.set(newValue, forKey: glowWhenGoalReachedKey) }
@@ -119,6 +139,7 @@ final class SettingsDelegate: NSObject, NSApplicationDelegate {
     private let hourlyRateField = NSTextField(string: "\(SharedSettings.hourlyRate)")
     private let monthlyGoalField = NSTextField(string: "\(SharedSettings.monthlyGoal)")
     private let glowCheckbox = NSButton(checkboxWithTitle: "目標達成時に光らせる", target: nil, action: nil)
+    private let resetMonthlyScoreButton = NSButton(title: "今月を初期化", target: nil, action: nil)
     private let pauseOnSleepCheckbox = NSButton(checkboxWithTitle: "スリープ時に一時停止する", target: nil, action: nil)
     private let pauseOnMouseIdleCheckbox = NSButton(checkboxWithTitle: "マウス無操作で一時停止する", target: nil, action: nil)
     private let mouseIdleMinutesField = NSTextField(string: "\(SharedSettings.mouseIdleMinutes)")
@@ -169,6 +190,11 @@ final class SettingsDelegate: NSObject, NSApplicationDelegate {
 
         monthlyScoreCheckbox.state = SharedSettings.showMonthlyScore ? .on : .off
         monthlyScoreCheckbox.frame = NSRect(x: 130, y: 238, width: 200, height: 22)
+
+        resetMonthlyScoreButton.target = self
+        resetMonthlyScoreButton.action = #selector(resetMonthlyScorePressed)
+        resetMonthlyScoreButton.bezelStyle = .rounded
+        resetMonthlyScoreButton.frame = NSRect(x: 350, y: 232, width: 120, height: 28)
 
         let hourlyRateLabel = NSTextField(labelWithString: "係数")
         hourlyRateLabel.font = NSFont.systemFont(ofSize: 12)
@@ -225,6 +251,7 @@ final class SettingsDelegate: NSObject, NSApplicationDelegate {
         content.addSubview(pauseOverlayCheckbox)
         content.addSubview(scoreTitle)
         content.addSubview(monthlyScoreCheckbox)
+        content.addSubview(resetMonthlyScoreButton)
         content.addSubview(hourlyRateLabel)
         content.addSubview(hourlyRateField)
         content.addSubview(goalLabel)
@@ -260,6 +287,18 @@ final class SettingsDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func closePressed() {
         NSApp.terminate(nil)
+    }
+
+    @objc private func resetMonthlyScorePressed() {
+        let alert = NSAlert()
+        alert.messageText = "今月の月間スコアを初期化しますか？"
+        alert.informativeText = "録画動画、録画区間ログ、日別合計は消しません。月間スコアだけ、この時刻以降の作業時間から再計算します。"
+        alert.addButton(withTitle: "初期化")
+        alert.addButton(withTitle: "キャンセル")
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+
+        SharedSettings.resetMonthlyScore()
+        syncAllDerivedLogs()
     }
 
     private func renameExistingRecordings(to newName: String) {
@@ -454,8 +493,9 @@ final class SettingsDelegate: NSObject, NSApplicationDelegate {
         guard !rows.isEmpty else { return }
 
         var dailyTotals: [String: (seconds: Int, count: Int)] = [:]
-        var monthSeconds = 0
-        var monthCount = 0
+        let resetAt = SharedSettings.monthlyScoreResetAt(for: monthDate(from: month) ?? Date())
+        var scoreSeconds = 0
+        var scoreCount = 0
         for line in rows {
             let columns = line.split(separator: "\t", omittingEmptySubsequences: false).map(String.init)
             guard columns.count >= 3 else { continue }
@@ -464,8 +504,20 @@ final class SettingsDelegate: NSObject, NSApplicationDelegate {
             let day = String(columns[0].prefix(10))
             let current = dailyTotals[day] ?? (0, 0)
             dailyTotals[day] = (current.seconds + seconds, current.count + 1)
-            monthSeconds += seconds
-            monthCount += 1
+            guard let startedAt = parseLogDate(columns[0]) else {
+                if resetAt == nil {
+                    scoreSeconds += seconds
+                    scoreCount += 1
+                }
+                continue
+            }
+            let endedAt = (columns.count >= 2 ? parseLogDate(columns[1]) : nil)
+                ?? startedAt.addingTimeInterval(TimeInterval(seconds))
+            let included = overlapSeconds(start: startedAt, end: endedAt, resetAt: resetAt)
+            if included > 0 {
+                scoreSeconds += included
+                scoreCount += 1
+            }
         }
 
         let dailyLines = dailyTotals.keys.sorted().map { day -> String in
@@ -479,18 +531,22 @@ final class SettingsDelegate: NSObject, NSApplicationDelegate {
             encoding: .utf8
         )
 
-        let earned = Int((Double(monthSeconds) / 3600.0 * Double(SharedSettings.hourlyRate)).rounded())
-        let scoreOutput = [
+        let earned = Int((Double(scoreSeconds) / 3600.0 * Double(SharedSettings.hourlyRate)).rounded())
+        var scoreLines = [
             "項目\t値",
             "月\t\(month)",
-            "合計作業時間\t\(formattedDuration(monthSeconds))",
-            "合計秒数\t\(monthSeconds)秒",
-            "記録回数\t\(monthCount)",
+            "合計作業時間\t\(formattedDuration(scoreSeconds))",
+            "合計秒数\t\(scoreSeconds)秒",
+            "記録回数\t\(scoreCount)",
             "係数\t\(SharedSettings.hourlyRate)円/時間",
             "月間スコア\t\(earned)円",
             "月末ライン\t\(SharedSettings.monthlyGoal)円",
             "達成\t\(SharedSettings.monthlyGoal > 0 && earned >= SharedSettings.monthlyGoal ? "はい" : "いいえ")"
-        ].joined(separator: "\n") + "\n"
+        ]
+        if let resetAt {
+            scoreLines.append("初期化日時\t\(displayDateTime(resetAt))")
+        }
+        let scoreOutput = scoreLines.joined(separator: "\n") + "\n"
         try? scoreOutput.write(
             to: monthURL.appendingPathComponent("月間スコア-\(month).txt"),
             atomically: true,
@@ -541,6 +597,12 @@ final class SettingsDelegate: NSObject, NSApplicationDelegate {
         return Int(trimmed) ?? 0
     }
 
+    private func monthDate(from month: String) -> Date? {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM"
+        return formatter.date(from: month)
+    }
+
     private func formattedDuration(_ seconds: Int) -> String {
         let hours = seconds / 3600
         let minutes = (seconds % 3600) / 60
@@ -552,6 +614,26 @@ final class SettingsDelegate: NSObject, NSApplicationDelegate {
             return "\(minutes)分\(remainingSeconds)秒"
         }
         return "\(remainingSeconds)秒"
+    }
+
+    private func parseLogDate(_ text: String) -> Date? {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "ja_JP")
+        formatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
+        return formatter.date(from: text)
+    }
+
+    private func overlapSeconds(start: Date, end: Date, resetAt: Date?) -> Int {
+        let effectiveStart = max(start, resetAt ?? start)
+        guard end > effectiveStart else { return 0 }
+        return max(0, Int(end.timeIntervalSince(effectiveStart).rounded()))
+    }
+
+    private func displayDateTime(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "ja_JP")
+        formatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
+        return formatter.string(from: date)
     }
 
     private func recordingDay(from basename: String) -> String? {
