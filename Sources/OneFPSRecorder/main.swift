@@ -2052,12 +2052,7 @@ final class OneFPSRecorder: NSObject {
             .appendingPathComponent("\(videoURL.deletingPathExtension().lastPathComponent).before-video-reconcile-\(timestamp()).mp4")
         let ffmpeg = FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent(".local/bin/ffmpeg")
-        let filter: String
-        if currentFrames < targetFrames {
-            filter = "tpad=stop_mode=clone:stop_duration=\(targetFrames - currentFrames),fps=1,scale=960:600:force_original_aspect_ratio=decrease,pad=960:600:(ow-iw)/2:(oh-ih)/2,setsar=1"
-        } else {
-            filter = "trim=duration=\(targetFrames),setpts=PTS-STARTPTS,fps=1,scale=960:600:force_original_aspect_ratio=decrease,pad=960:600:(ow-iw)/2:(oh-ih)/2,setsar=1"
-        }
+        let filter = "setpts=PTS*\(targetFrames)/\(currentFrames),fps=1,scale=960:600:force_original_aspect_ratio=decrease,pad=960:600:(ow-iw)/2:(oh-ih)/2,setsar=1"
 
         let process = Process()
         process.executableURL = ffmpeg
