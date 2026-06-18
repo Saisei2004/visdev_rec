@@ -6,6 +6,7 @@ enum RecorderSettings {
     private static let defaults = UserDefaults(suiteName: "local.codex.OneFPSRecorder") ?? .standard
     private static let recordingNameKey = "recordingName"
     private static let showOverlayKey = "showRecordingOverlay"
+    private static let showPauseOverlayKey = "showPauseOverlay"
     private static let showMonthlyScoreKey = "showMonthlyScore"
     private static let hourlyRateKey = "hourlyRate"
     private static let monthlyGoalKey = "monthlyGoal"
@@ -37,6 +38,19 @@ enum RecorderSettings {
         }
         set {
             defaults.set(newValue, forKey: showOverlayKey)
+        }
+    }
+
+    static var showPauseOverlay: Bool {
+        get {
+            defaults.synchronize()
+            if defaults.object(forKey: showPauseOverlayKey) == nil {
+                return true
+            }
+            return defaults.bool(forKey: showPauseOverlayKey)
+        }
+        set {
+            defaults.set(newValue, forKey: showPauseOverlayKey)
         }
     }
 
@@ -171,15 +185,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         OneFPSRecorder.migrateRecordingsDirectory()
         OneFPSRecorder.recoverOrphanedFrameDirectories()
         OneFPSRecorder.migrateSavedTextFileNames()
+        OneFPSRecorder.migrateToDailyDirectories()
         OneFPSRecorder.renameExistingRecordings(from: "", to: RecorderSettings.recordingName)
         OneFPSRecorder.rewriteRecordingLogFileNames(to: RecorderSettings.recordingName)
         OneFPSRecorder.reconcileDailyVideosWithLogs()
         OneFPSRecorder.syncAllDerivedLogs()
 
         setupStatusItem()
-        overlay = RecordingOverlay(stopAction: { [weak self] in
-            self?.stopRecordingFromOverlay()
-        })
+        overlay = RecordingOverlay(
+            stopAction: { [weak self] in
+                self?.stopRecordingFromOverlay()
+            },
+            resumeAction: { [weak self] in
+                self?.resumeRecordingFromPauseOverlay()
+            }
+        )
         setupCommandNotifications()
         setupAutomaticPauseHandling()
         applyStatus(.idle)
@@ -226,17 +246,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         button.attributedTitle = NSAttributedString(string: "")
         switch state {
         case .idle:
-            button.title = "1FPS"
+            button.title = isAutomaticallyPaused ? "1FPS 一時停止" : "1FPS"
             button.contentTintColor = nil
             statusItem.menu?.item(at: 0)?.title = "録画開始"
             statusItem.menu?.item(at: 0)?.isEnabled = true
-            overlay.hide()
+            if isAutomaticallyPaused, RecorderSettings.showPauseOverlay {
+                overlay.showPaused(message: automaticPauseMessage)
+            } else {
+                overlay.hide()
+            }
         case .idleSaving:
             button.title = "1FPS 保存中"
             button.contentTintColor = nil
             statusItem.menu?.item(at: 0)?.title = "録画開始"
             statusItem.menu?.item(at: 0)?.isEnabled = true
-            if RecorderSettings.showOverlay {
+            if isAutomaticallyPaused, RecorderSettings.showPauseOverlay {
+                overlay.showSaving(message: "一時停止を保存中")
+            } else if RecorderSettings.showOverlay {
                 overlay.showSaving(message: overlayMessage)
             } else {
                 overlay.hide()
@@ -267,7 +293,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             button.contentTintColor = nil
             statusItem.menu?.item(at: 0)?.title = "保存中..."
             statusItem.menu?.item(at: 0)?.isEnabled = false
-            if RecorderSettings.showOverlay {
+            if isAutomaticallyPaused, RecorderSettings.showPauseOverlay {
+                overlay.showSaving(message: "一時停止を保存中")
+            } else if RecorderSettings.showOverlay {
                 overlay.showSaving(message: overlayMessage)
             } else {
                 overlay.hide()
@@ -329,6 +357,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         recorder.stop()
     }
 
+    private func resumeRecordingFromPauseOverlay() {
+        guard isAutomaticallyPaused else { return }
+        log("Pause overlay resume requested")
+        autoPausedBySleep = false
+        autoPausedByMouseIdle = false
+        overlayMessage = Self.startMessage()
+        startRecordingAfterAutomaticPause()
+    }
+
+    private var isAutomaticallyPaused: Bool {
+        autoPausedBySleep || autoPausedByMouseIdle
+    }
+
+    private var automaticPauseMessage: String {
+        if autoPausedBySleep {
+            return "スリープを検知して一時停止しました"
+        }
+        if autoPausedByMouseIdle {
+            return "無操作を検知して一時停止しました"
+        }
+        return "一時停止しました"
+    }
+
     private func handleCommand(_ command: String) {
         log("Command received: \(command)")
         switch command {
@@ -388,10 +439,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func workspaceDidWake() {
         guard autoPausedBySleep else { return }
-        log("Auto resume after wake")
-        autoPausedBySleep = false
-        overlayMessage = Self.startMessage()
-        startRecordingAfterAutomaticPause()
+        log("Wake detected while automatically paused")
+        applyStatus(.idle)
     }
 
     private func checkMouseActivity() {
@@ -402,10 +451,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
            hypot(currentLocation.x - lastMouseLocation.x, currentLocation.y - lastMouseLocation.y) >= 2 {
             lastMouseMovedAt = Date()
             if autoPausedByMouseIdle {
-                log("Auto resume after mouse movement")
-                autoPausedByMouseIdle = false
-                overlayMessage = Self.startMessage()
-                startRecordingAfterAutomaticPause()
+                applyStatus(.idle)
             }
             return
         }
@@ -662,13 +708,14 @@ enum RecorderState {
 final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     private let nameField = NSTextField(string: RecorderSettings.recordingName)
     private let overlayCheckbox = NSButton(checkboxWithTitle: "録画中パネルを表示する", target: nil, action: nil)
+    private let pauseOverlayCheckbox = NSButton(checkboxWithTitle: "一時停止パネルを表示する", target: nil, action: nil)
     private let onSave: (String, String) -> Void
 
     init(onSave: @escaping (String, String) -> Void) {
         self.onSave = onSave
 
         let window = NSPanel(
-            contentRect: NSRect(x: 0, y: 0, width: 420, height: 190),
+            contentRect: NSRect(x: 0, y: 0, width: 420, height: 220),
             styleMask: [.titled, .closable, .utilityWindow],
             backing: .buffered,
             defer: false
@@ -692,6 +739,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     override func showWindow(_ sender: Any?) {
         nameField.stringValue = RecorderSettings.recordingName
         overlayCheckbox.state = RecorderSettings.showOverlay ? .on : .off
+        pauseOverlayCheckbox.state = RecorderSettings.showPauseOverlay ? .on : .off
         super.showWindow(sender)
         window?.makeKeyAndOrderFront(nil)
         window?.orderFrontRegardless()
@@ -702,18 +750,21 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
 
         let title = NSTextField(labelWithString: "保存名")
         title.font = NSFont.systemFont(ofSize: 13, weight: .semibold)
-        title.frame = NSRect(x: 24, y: 132, width: 80, height: 20)
+        title.frame = NSRect(x: 24, y: 162, width: 80, height: 20)
 
-        nameField.frame = NSRect(x: 104, y: 126, width: 282, height: 28)
+        nameField.frame = NSRect(x: 104, y: 156, width: 282, height: 28)
         nameField.placeholderString = "録画"
 
         let hint = NSTextField(labelWithString: "ファイル名は MMDD_名前.mp4 になります。名前変更時は既存動画も更新します。")
         hint.font = NSFont.systemFont(ofSize: 11)
         hint.textColor = .secondaryLabelColor
-        hint.frame = NSRect(x: 104, y: 100, width: 292, height: 18)
+        hint.frame = NSRect(x: 104, y: 130, width: 292, height: 18)
 
         overlayCheckbox.target = self
-        overlayCheckbox.frame = NSRect(x: 104, y: 68, width: 240, height: 22)
+        overlayCheckbox.frame = NSRect(x: 104, y: 98, width: 240, height: 22)
+
+        pauseOverlayCheckbox.target = self
+        pauseOverlayCheckbox.frame = NSRect(x: 104, y: 68, width: 240, height: 22)
 
         let saveButton = NSButton(title: "保存", target: self, action: #selector(savePressed))
         saveButton.bezelStyle = .rounded
@@ -728,6 +779,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         contentView.addSubview(nameField)
         contentView.addSubview(hint)
         contentView.addSubview(overlayCheckbox)
+        contentView.addSubview(pauseOverlayCheckbox)
         contentView.addSubview(saveButton)
         contentView.addSubview(cancelButton)
     }
@@ -737,6 +789,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         let newName = RecorderSettings.sanitizedRecordingName(nameField.stringValue)
         RecorderSettings.recordingName = newName
         RecorderSettings.showOverlay = overlayCheckbox.state == .on
+        RecorderSettings.showPauseOverlay = pauseOverlayCheckbox.state == .on
         onSave(oldName, newName)
         window?.orderOut(nil)
         NSApp.setActivationPolicy(.accessory)
@@ -763,11 +816,19 @@ final class RecordingOverlay {
     private let statusDot = DraggableDotView(frame: NSRect(x: 0, y: 0, width: 9, height: 9))
     private let stopButton = NSButton(title: "停止", target: nil, action: nil)
     private let stopAction: () -> Void
+    private let resumeAction: () -> Void
+    private var buttonMode: ButtonMode = .stop
     private var glowTimer: Timer?
     private var glowHue: CGFloat = 0
 
-    init(stopAction: @escaping () -> Void) {
+    private enum ButtonMode {
+        case stop
+        case resume
+    }
+
+    init(stopAction: @escaping () -> Void, resumeAction: @escaping () -> Void) {
         self.stopAction = stopAction
+        self.resumeAction = resumeAction
 
         panel = NSPanel(
             contentRect: NSRect(x: 0, y: 0, width: 336, height: 76),
@@ -838,8 +899,11 @@ final class RecordingOverlay {
         scoreLabel.isHidden = scoreText == nil
         messageLabel.stringValue = message
         statusDot.layer?.backgroundColor = NSColor.systemRed.cgColor
+        statusDot.layer?.shadowColor = NSColor.systemRed.cgColor
         stopButton.isEnabled = true
         stopButton.title = "停止"
+        stopButton.contentTintColor = .systemRed
+        buttonMode = .stop
         setGlowEnabled(glow)
         show()
     }
@@ -850,8 +914,26 @@ final class RecordingOverlay {
         scoreLabel.isHidden = true
         messageLabel.stringValue = message
         statusDot.layer?.backgroundColor = NSColor.systemOrange.cgColor
+        statusDot.layer?.shadowColor = NSColor.systemOrange.cgColor
         stopButton.isEnabled = false
         stopButton.title = "..."
+        stopButton.contentTintColor = .systemOrange
+        buttonMode = .stop
+        setGlowEnabled(false)
+        show()
+    }
+
+    func showPaused(message: String) {
+        titleLabel.stringValue = "一時停止"
+        scoreLabel.stringValue = ""
+        scoreLabel.isHidden = true
+        messageLabel.stringValue = message
+        statusDot.layer?.backgroundColor = NSColor.systemYellow.cgColor
+        statusDot.layer?.shadowColor = NSColor.systemYellow.cgColor
+        stopButton.isEnabled = true
+        stopButton.title = "再開"
+        stopButton.contentTintColor = .systemBlue
+        buttonMode = .resume
         setGlowEnabled(false)
         show()
     }
@@ -946,7 +1028,12 @@ final class RecordingOverlay {
 
     @objc private func stopPressed() {
         saveCurrentOrigin()
-        stopAction()
+        switch buttonMode {
+        case .stop:
+            stopAction()
+        case .resume:
+            resumeAction()
+        }
     }
 }
 
@@ -1490,13 +1577,8 @@ final class OneFPSRecorder: NSObject {
     }
 
     private static func dailyOutputURL(for date: Date = Date()) -> URL {
-        let monthFormatter = DateFormatter()
-        monthFormatter.dateFormat = "yyyy-MM"
-        let dayFormatter = DateFormatter()
-        dayFormatter.dateFormat = "MMdd"
-        let filename = "\(dayFormatter.string(from: date))_\(RecorderSettings.recordingName).mp4"
-        return recordingsDirectory
-            .appendingPathComponent(monthFormatter.string(from: date), isDirectory: true)
+        let filename = "\(monthDayString(from: date))_\(RecorderSettings.recordingName).mp4"
+        return dailyDirectory(for: date)
             .appendingPathComponent(filename)
     }
 
@@ -1511,15 +1593,9 @@ final class OneFPSRecorder: NSObject {
         for monthURL in months {
             let values = try? monthURL.resourceValues(forKeys: [.isDirectoryKey])
             guard values?.isDirectory == true else { continue }
-            guard let files = try? FileManager.default.contentsOfDirectory(
-                at: monthURL,
-                includingPropertiesForKeys: nil,
-                options: [.skipsHiddenFiles]
-            ) else { continue }
-
-            for fileURL in files where isCanonicalDailyVideo(fileURL) {
+            for fileURL in canonicalDailyVideoURLs(in: monthURL) {
                 guard let day = recordingDay(from: fileURL.deletingPathExtension().lastPathComponent) else { continue }
-                let newURL = monthURL.appendingPathComponent("\(day)_\(targetName).mp4")
+                let newURL = fileURL.deletingLastPathComponent().appendingPathComponent("\(day)_\(targetName).mp4")
                 guard fileURL.path != newURL.path else { continue }
                 if FileManager.default.fileExists(atPath: newURL.path) {
                     _ = mergeVideoFile(fileURL, into: newURL)
@@ -1538,6 +1614,22 @@ final class OneFPSRecorder: NSObject {
         guard !basename.contains(".rename-") else { return false }
         guard !basename.contains(".daily-") else { return false }
         return recordingDay(from: basename) != nil
+    }
+
+    private static func canonicalDailyVideoURLs(in monthURL: URL) -> [URL] {
+        guard let enumerator = FileManager.default.enumerator(
+            at: monthURL,
+            includingPropertiesForKeys: [.isRegularFileKey],
+            options: [.skipsHiddenFiles]
+        ) else { return [] }
+        var urls: [URL] = []
+        for case let fileURL as URL in enumerator {
+            if fileURL.pathComponents.contains("バックアップ") { continue }
+            if isCanonicalDailyVideo(fileURL) {
+                urls.append(fileURL)
+            }
+        }
+        return urls
     }
 
     private static func mergeVideoFile(_ sourceURL: URL, into targetURL: URL) -> Bool {
@@ -1616,26 +1708,27 @@ final class OneFPSRecorder: NSObject {
             let month = monthURL.lastPathComponent
             guard month.range(of: #"^\d{4}-\d{2}$"#, options: .regularExpression) != nil else { continue }
 
-            let logURL = monthURL.appendingPathComponent("録画区間ログ-\(month).txt")
-            guard let content = try? String(contentsOf: logURL, encoding: .utf8) else { continue }
+            for logURL in activeRecordingLogURLs(in: monthURL, month: month) {
+                guard let content = try? String(contentsOf: logURL, encoding: .utf8) else { continue }
 
-            let rewrittenLines = content.split(separator: "\n", omittingEmptySubsequences: false).map { rawLine -> String in
-                let line = String(rawLine)
-                let columns = line.split(separator: "\t", omittingEmptySubsequences: false).map(String.init)
-                guard columns.count >= 4 else { return line }
-                let dayText = String(columns[0].prefix(10))
-                guard dayText.count == 10 else { return line }
-                let monthDay = dayText
-                    .replacingOccurrences(of: "-", with: "")
-                    .suffix(4)
-                guard monthDay.count == 4 else { return line }
+                let rewrittenLines = content.split(separator: "\n", omittingEmptySubsequences: false).map { rawLine -> String in
+                    let line = String(rawLine)
+                    let columns = line.split(separator: "\t", omittingEmptySubsequences: false).map(String.init)
+                    guard columns.count >= 4 else { return line }
+                    let dayText = String(columns[0].prefix(10))
+                    guard dayText.count == 10 else { return line }
+                    let monthDay = dayText
+                        .replacingOccurrences(of: "-", with: "")
+                        .suffix(4)
+                    guard monthDay.count == 4 else { return line }
 
-                var updatedColumns = columns
-                updatedColumns[3] = "\(monthDay)_\(targetName).mp4"
-                return updatedColumns.joined(separator: "\t")
+                    var updatedColumns = columns
+                    updatedColumns[3] = "\(monthDay)_\(targetName).mp4"
+                    return updatedColumns.joined(separator: "\t")
+                }
+
+                try? rewrittenLines.joined(separator: "\n").write(to: logURL, atomically: true, encoding: .utf8)
             }
-
-            try? rewrittenLines.joined(separator: "\n").write(to: logURL, atomically: true, encoding: .utf8)
         }
         syncAllDerivedLogs()
     }
@@ -1660,6 +1753,21 @@ final class OneFPSRecorder: NSObject {
     private static func monthlyLogURL(for date: Date = Date()) -> URL {
         monthlyDirectory(for: date)
             .appendingPathComponent("録画区間ログ-\(monthString(from: date)).txt")
+    }
+
+    private static func dailyLogURL(for date: Date = Date()) -> URL {
+        let directory = dailyDirectory(for: date)
+        if let files = try? FileManager.default.contentsOfDirectory(
+            at: directory,
+            includingPropertiesForKeys: nil,
+            options: [.skipsHiddenFiles]
+        ),
+           let existingLog = files.first(where: {
+               $0.pathExtension == "txt" && $0.lastPathComponent.contains("録画区間")
+           }) {
+            return existingLog
+        }
+        return directory.appendingPathComponent("録画区間ログ-\(dayString(from: date)).txt")
     }
 
     private static func legacyMonthlyLogURL(for date: Date = Date()) -> URL {
@@ -1687,10 +1795,34 @@ final class OneFPSRecorder: NSObject {
             .appendingPathComponent(monthString(from: date), isDirectory: true)
     }
 
+    private static func dailyDirectory(for date: Date = Date()) -> URL {
+        monthlyDirectory(for: date)
+            .appendingPathComponent(monthDayString(from: date), isDirectory: true)
+    }
+
     private static func monthString(from date: Date = Date()) -> String {
         let monthFormatter = DateFormatter()
         monthFormatter.dateFormat = "yyyy-MM"
         return monthFormatter.string(from: date)
+    }
+
+    private static func dayString(from date: Date = Date()) -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd"
+        return formatter.string(from: date)
+    }
+
+    private static func monthDayString(from date: Date = Date()) -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "MMdd"
+        return formatter.string(from: date)
+    }
+
+    private static func date(from month: String, monthDay: String) -> Date? {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd"
+        let day = "\(month)-\(monthDay.prefix(2))-\(monthDay.suffix(2))"
+        return formatter.date(from: day)
     }
 
     private static func segmentMetadataURL(in frameDirectory: URL) -> URL {
@@ -1717,6 +1849,56 @@ final class OneFPSRecorder: NSObject {
             return try decoder.decode(SegmentMetadata.self, from: data)
         } catch {
             return nil
+        }
+    }
+
+    private static func activeRecordingLogURLs(in monthURL: URL, month: String) -> [URL] {
+        var urls: [URL] = []
+        if let items = try? FileManager.default.contentsOfDirectory(
+            at: monthURL,
+            includingPropertiesForKeys: [.isDirectoryKey],
+            options: [.skipsHiddenFiles]
+        ) {
+            for itemURL in items {
+                let values = try? itemURL.resourceValues(forKeys: [.isDirectoryKey])
+                guard values?.isDirectory == true else { continue }
+                let day = itemURL.lastPathComponent
+                guard day.range(of: #"^\d{4}$"#, options: .regularExpression) != nil else { continue }
+                let canonicalLogURL = itemURL.appendingPathComponent("録画区間ログ-\(month)-\(day.suffix(2)).txt")
+                if FileManager.default.fileExists(atPath: canonicalLogURL.path) {
+                    urls.append(canonicalLogURL)
+                    continue
+                }
+                if let files = try? FileManager.default.contentsOfDirectory(
+                    at: itemURL,
+                    includingPropertiesForKeys: nil,
+                    options: [.skipsHiddenFiles]
+                ) {
+                    urls.append(contentsOf: files.filter {
+                        $0.pathExtension == "txt" && $0.lastPathComponent.contains("録画区間")
+                    })
+                }
+            }
+        }
+        urls.sort { $0.path < $1.path }
+
+        if urls.isEmpty {
+            let monthlyURL = monthURL.appendingPathComponent("録画区間ログ-\(month).txt")
+            if FileManager.default.fileExists(atPath: monthlyURL.path) {
+                urls.append(monthlyURL)
+            }
+        }
+        return urls
+    }
+
+    private static func recordingLogRows(for date: Date) -> [String] {
+        let month = monthString(from: date)
+        let monthURL = monthlyDirectory(for: date)
+        return activeRecordingLogURLs(in: monthURL, month: month).flatMap { logURL in
+            ((try? String(contentsOf: logURL, encoding: .utf8)) ?? "")
+                .split(separator: "\n")
+                .dropFirst()
+                .map(String.init)
         }
     }
 
@@ -1938,9 +2120,180 @@ final class OneFPSRecorder: NSObject {
         }
     }
 
+    static func migrateToDailyDirectories() {
+        guard let months = try? FileManager.default.contentsOfDirectory(
+            at: recordingsDirectory,
+            includingPropertiesForKeys: [.isDirectoryKey],
+            options: [.skipsHiddenFiles]
+        ) else { return }
+
+        for monthURL in months {
+            let values = try? monthURL.resourceValues(forKeys: [.isDirectoryKey])
+            guard values?.isDirectory == true else { continue }
+            let month = monthURL.lastPathComponent
+            guard month.range(of: #"^\d{4}-\d{2}$"#, options: .regularExpression) != nil else { continue }
+            splitMonthlyLogIntoDailyLogs(monthURL: monthURL, month: month)
+            moveRootDailyVideosIntoDailyDirectories(monthURL: monthURL, month: month)
+            normalizeDailyLogFileNames(monthURL: monthURL, month: month)
+            moveLegacyLogBackups(monthURL: monthURL)
+        }
+    }
+
+    private static func splitMonthlyLogIntoDailyLogs(monthURL: URL, month: String) {
+        let logURL = monthURL.appendingPathComponent("録画区間ログ-\(month).txt")
+        let sourceURL: URL
+        if FileManager.default.fileExists(atPath: logURL.path) {
+            sourceURL = logURL
+        } else if activeRecordingLogURLs(in: monthURL, month: month).isEmpty,
+                  let migratedBackup = latestMigratedMonthlyLogBackup(in: monthURL) {
+            sourceURL = migratedBackup
+        } else {
+            return
+        }
+        guard let content = try? String(contentsOf: sourceURL, encoding: .utf8) else { return }
+
+        let rows = content.split(separator: "\n").dropFirst().map(String.init)
+        guard !rows.isEmpty else { return }
+
+        var rowsByDay: [String: [String]] = [:]
+        for row in rows {
+            let columns = row.split(separator: "\t", omittingEmptySubsequences: false).map(String.init)
+            guard let startedAt = columns.first, startedAt.count >= 10 else { continue }
+            let day = String(startedAt.prefix(10))
+            guard day.hasPrefix(month) else { continue }
+            let monthDay = day.replacingOccurrences(of: "-", with: "").suffix(4)
+            rowsByDay[String(monthDay), default: []].append(row)
+        }
+
+        for (monthDay, dayRows) in rowsByDay {
+            let dailyURL = monthURL
+                .appendingPathComponent(monthDay, isDirectory: true)
+                .appendingPathComponent("録画区間ログ-\(month)-\(monthDay.suffix(2)).txt")
+            mergeLogRows(dayRows, into: dailyURL, header: "開始\t終了\t時間\tファイル\tID")
+        }
+
+        if sourceURL.path == logURL.path {
+            let backupURL = backupDirectory(in: monthURL)
+                .appendingPathComponent("録画区間ログ-\(month).migrated-\(timestamp()).txt")
+            try? FileManager.default.createDirectory(at: backupURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try? FileManager.default.moveItem(at: logURL, to: backupURL)
+        }
+    }
+
+    private static func latestMigratedMonthlyLogBackup(in monthURL: URL) -> URL? {
+        let backupURL = backupDirectory(in: monthURL)
+        let files = (try? FileManager.default.contentsOfDirectory(
+            at: backupURL,
+            includingPropertiesForKeys: nil,
+            options: [.skipsHiddenFiles]
+        )) ?? []
+        return files
+            .filter { $0.lastPathComponent.contains(".migrated-") && $0.lastPathComponent.hasSuffix(".txt") }
+            .sorted { $0.lastPathComponent > $1.lastPathComponent }
+            .first
+    }
+
+    private static func mergeLogRows(_ rows: [String], into logURL: URL, header: String) {
+        do {
+            try FileManager.default.createDirectory(at: logURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+            let existingText = (try? String(contentsOf: logURL, encoding: .utf8)) ?? ""
+            var existing = Set(existingText.split(separator: "\n").map(String.init))
+            var lines = existingText
+                .split(separator: "\n", omittingEmptySubsequences: true)
+                .map(String.init)
+            if lines.first?.hasPrefix("開始\t終了\t時間\tファイル") != true {
+                lines.insert(header, at: 0)
+                existing.insert(header)
+            }
+            for row in rows where !existing.contains(row) {
+                lines.append(row)
+                existing.insert(row)
+            }
+            try (lines.joined(separator: "\n") + "\n").write(to: logURL, atomically: true, encoding: .utf8)
+        } catch {
+            return
+        }
+    }
+
+    private static func moveRootDailyVideosIntoDailyDirectories(monthURL: URL, month: String) {
+        guard let files = try? FileManager.default.contentsOfDirectory(
+            at: monthURL,
+            includingPropertiesForKeys: nil,
+            options: [.skipsHiddenFiles]
+        ) else { return }
+
+        for fileURL in files where isCanonicalDailyVideo(fileURL) {
+            guard let monthDay = recordingDay(from: fileURL.deletingPathExtension().lastPathComponent) else { continue }
+            let destinationURL = monthURL
+                .appendingPathComponent(monthDay, isDirectory: true)
+                .appendingPathComponent(fileURL.lastPathComponent)
+            do {
+                try FileManager.default.createDirectory(at: destinationURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+                if FileManager.default.fileExists(atPath: destinationURL.path) {
+                    _ = mergeVideoFile(fileURL, into: destinationURL)
+                } else {
+                    try FileManager.default.moveItem(at: fileURL, to: destinationURL)
+                }
+            } catch {
+                continue
+            }
+        }
+    }
+
+    private static func moveLegacyLogBackups(monthURL: URL) {
+        guard let files = try? FileManager.default.contentsOfDirectory(
+            at: monthURL,
+            includingPropertiesForKeys: nil,
+            options: [.skipsHiddenFiles]
+        ) else { return }
+        let backupURL = backupDirectory(in: monthURL)
+        for fileURL in files {
+            let name = fileURL.lastPathComponent
+            guard name.contains("録画区間"), name.contains(".before-") else { continue }
+            try? FileManager.default.createDirectory(at: backupURL, withIntermediateDirectories: true)
+            let destination = backupURL.appendingPathComponent(name)
+            if !FileManager.default.fileExists(atPath: destination.path) {
+                try? FileManager.default.moveItem(at: fileURL, to: destination)
+            }
+        }
+    }
+
+    private static func normalizeDailyLogFileNames(monthURL: URL, month: String) {
+        guard let items = try? FileManager.default.contentsOfDirectory(
+            at: monthURL,
+            includingPropertiesForKeys: [.isDirectoryKey],
+            options: [.skipsHiddenFiles]
+        ) else { return }
+
+        for dayURL in items {
+            let values = try? dayURL.resourceValues(forKeys: [.isDirectoryKey])
+            guard values?.isDirectory == true else { continue }
+            let monthDay = dayURL.lastPathComponent
+            guard monthDay.range(of: #"^\d{4}$"#, options: .regularExpression) != nil else { continue }
+            let canonicalURL = dayURL.appendingPathComponent("録画区間ログ-\(month)-\(monthDay.suffix(2)).txt")
+            guard let files = try? FileManager.default.contentsOfDirectory(
+                at: dayURL,
+                includingPropertiesForKeys: nil,
+                options: [.skipsHiddenFiles]
+            ) else { continue }
+            for fileURL in files where fileURL.pathExtension == "txt" && fileURL.lastPathComponent.contains("録画区間") {
+                guard fileURL.path != canonicalURL.path else { continue }
+                if FileManager.default.fileExists(atPath: canonicalURL.path) {
+                    migrateTextFile(from: fileURL, to: canonicalURL, header: "開始\t終了\t時間\tファイル\tID")
+                } else {
+                    try? FileManager.default.moveItem(at: fileURL, to: canonicalURL)
+                }
+            }
+        }
+    }
+
+    private static func backupDirectory(in monthURL: URL) -> URL {
+        monthURL.appendingPathComponent("バックアップ", isDirectory: true)
+    }
+
     @discardableResult
     private static func appendRecordingLog(startedAt: Date, endedAt: Date, outputURL: URL, segmentID: String) -> Bool {
-        let logURL = monthlyLogURL(for: endedAt)
+        let logURL = dailyLogURL(for: endedAt)
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "ja_JP")
         formatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
@@ -2021,12 +2374,13 @@ final class OneFPSRecorder: NSObject {
     }
 
     private static func reconcileMonthVideosWithLog(monthURL: URL, month: String) {
-        let logURL = monthURL.appendingPathComponent("録画区間ログ-\(month).txt")
-        guard let content = try? String(contentsOf: logURL, encoding: .utf8) else { return }
-        guard content.split(separator: "\n").first?.hasPrefix("開始\t終了\t時間\tファイル") == true else { return }
-
         var targetSecondsByFilename: [String: Int] = [:]
-        for line in content.split(separator: "\n").dropFirst() {
+        for line in activeRecordingLogURLs(in: monthURL, month: month).flatMap({ logURL in
+            ((try? String(contentsOf: logURL, encoding: .utf8)) ?? "")
+                .split(separator: "\n")
+                .dropFirst()
+                .map(String.init)
+        }) {
             let columns = line.split(separator: "\t", omittingEmptySubsequences: false).map(String.init)
             guard columns.count >= 4 else { continue }
             let filename = columns[3]
@@ -2035,7 +2389,7 @@ final class OneFPSRecorder: NSObject {
         }
 
         for (filename, targetSeconds) in targetSecondsByFilename where targetSeconds > 0 {
-            let videoURL = monthURL.appendingPathComponent(filename)
+            guard let videoURL = canonicalDailyVideoURLs(in: monthURL).first(where: { $0.lastPathComponent == filename }) else { continue }
             repairDailyVideo(videoURL, targetFrames: targetSeconds)
         }
     }
@@ -2107,15 +2461,12 @@ final class OneFPSRecorder: NSObject {
 
     @discardableResult
     static func updateDailyTotalLog(for date: Date = Date()) -> Bool {
-        let sourceURL = monthlyLogURL(for: date)
         let outputURL = dailyTotalLogURL(for: date)
-        let fallbackSourceURL = legacyMonthlyLogURL(for: date)
-        let content = (try? String(contentsOf: sourceURL, encoding: .utf8))
-            ?? (try? String(contentsOf: fallbackSourceURL, encoding: .utf8))
-        guard let content else { return false }
+        let rows = recordingLogRows(for: date)
+        guard !rows.isEmpty else { return false }
 
         var totals: [String: (seconds: Int, count: Int)] = [:]
-        for line in content.split(separator: "\n").dropFirst() {
+        for line in rows {
             let columns = line.split(separator: "\t").map(String.init)
             guard columns.count >= 3 else { continue }
             let day = String(columns[0].prefix(10))
@@ -2155,15 +2506,12 @@ final class OneFPSRecorder: NSObject {
 
     @discardableResult
     static func updateMonthlyScoreLog(for date: Date = Date(), includingCurrentStartedAt startedAt: Date? = nil) -> Bool {
-        let sourceURL = monthlyLogURL(for: date)
-        let fallbackSourceURL = legacyMonthlyLogURL(for: date)
-        let content = (try? String(contentsOf: sourceURL, encoding: .utf8))
-            ?? (try? String(contentsOf: fallbackSourceURL, encoding: .utf8))
-        guard let content else { return false }
+        let rows = recordingLogRows(for: date)
+        guard !rows.isEmpty else { return false }
 
         var seconds = 0
         var count = 0
-        for line in content.split(separator: "\n").dropFirst() {
+        for line in rows {
             let columns = line.split(separator: "\t", omittingEmptySubsequences: false).map(String.init)
             guard columns.count >= 3 else { continue }
             seconds += parsedDurationSeconds(columns[2])
@@ -2201,13 +2549,13 @@ final class OneFPSRecorder: NSObject {
         let dayFormatter = DateFormatter()
         dayFormatter.dateFormat = "yyyy-MM-dd"
         let targetDay = dayFormatter.string(from: date)
-        return workSeconds(in: monthlyLogURL(for: date)) { startedAt in
+        return workSeconds(in: recordingLogRows(for: date)) { startedAt in
             startedAt.hasPrefix(targetDay)
         }
     }
 
     static func monthlyScore(for date: Date = Date(), includingCurrentStartedAt startedAt: Date? = nil) -> (seconds: Int, earnedYen: Int) {
-        var seconds = workSeconds(in: monthlyLogURL(for: date)) { _ in true }
+        var seconds = workSeconds(in: recordingLogRows(for: date)) { _ in true }
         if let startedAt,
            Calendar.current.isDate(startedAt, equalTo: date, toGranularity: .month) {
             seconds += max(0, Int(Date().timeIntervalSince(startedAt)))
@@ -2216,9 +2564,8 @@ final class OneFPSRecorder: NSObject {
         return (seconds, earned)
     }
 
-    private static func workSeconds(in logURL: URL, matching include: (String) -> Bool) -> Int {
-        guard let content = try? String(contentsOf: logURL, encoding: .utf8) else { return 0 }
-        return content.split(separator: "\n").dropFirst().reduce(0) { total, row in
+    private static func workSeconds(in rows: [String], matching include: (String) -> Bool) -> Int {
+        rows.reduce(0) { total, row in
             let columns = row.split(separator: "\t").map(String.init)
             guard columns.count >= 3, include(columns[0]) else { return total }
             return total + parsedDurationSeconds(columns[2])

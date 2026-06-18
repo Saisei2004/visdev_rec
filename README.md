@@ -25,8 +25,8 @@ cd visdev_rec
 ## 保存先
 
 ```text
-~/Movies/1FPS録画/YYYY-MM/MMDD_保存名.mp4
-~/Movies/1FPS録画/YYYY-MM/録画区間ログ-YYYY-MM.txt
+~/Movies/1FPS録画/YYYY-MM/MMDD/MMDD_保存名.mp4
+~/Movies/1FPS録画/YYYY-MM/MMDD/録画区間ログ-YYYY-MM-DD.txt
 ~/Movies/1FPS録画/YYYY-MM/日別合計作業時間-YYYY-MM.txt
 ~/Movies/1FPS録画/YYYY-MM/月間スコア-YYYY-MM.txt
 ```
@@ -34,7 +34,7 @@ cd visdev_rec
 例:
 
 ```text
-~/Movies/1FPS録画/2026-06/0616_松田.mp4
+~/Movies/1FPS録画/2026-06/0616/0616_松田.mp4
 ```
 
 同じ日の録画は1つのMP4へ後ろに追記されます。統合済みの一時動画は自動で削除します。
@@ -117,8 +117,8 @@ rm -rf ~/Movies/1FPS録画
 
 ### 振り返り
 
-- 作業の流れを見る: `MMDD_保存名.mp4`
-- 開始/終了の区間を見る: `録画区間ログ-YYYY-MM.txt`
+- 作業の流れを見る: `YYYY-MM/MMDD/MMDD_保存名.mp4`
+- 開始/終了の区間を見る: `YYYY-MM/MMDD/録画区間ログ-YYYY-MM-DD.txt`
 - その日の合計作業時間を見る: `日別合計作業時間-YYYY-MM.txt`
 - 月内の合計時間と月間スコアを見る: `月間スコア-YYYY-MM.txt`
 

@@ -56,6 +56,25 @@ def parse_month_log(log_path: Path) -> tuple[dict[str, int], int, int]:
     return totals, rows, legacy_rows
 
 
+def active_log_paths(month_dir: Path) -> list[Path]:
+    daily_logs = sorted(
+        p for p in month_dir.glob("????/*.txt")
+        if "録画区間" in p.name
+    )
+    if daily_logs:
+        return daily_logs
+    legacy = month_dir / f"録画区間ログ-{month_dir.name}.txt"
+    return [legacy] if legacy.exists() else []
+
+
+def video_path_for(month_dir: Path, filename: str) -> Path | None:
+    candidates = [month_dir / filename, *sorted(month_dir.glob(f"????/{filename}"))]
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate
+    return None
+
+
 def main() -> int:
     issues: list[str] = []
     if not ROOT.exists():
@@ -65,17 +84,25 @@ def main() -> int:
     for month_dir in sorted(ROOT.iterdir()):
         if not month_dir.is_dir() or not re.match(r"^\d{4}-\d{2}$", month_dir.name):
             continue
-        log_path = month_dir / f"録画区間ログ-{month_dir.name}.txt"
-        if not log_path.exists():
-            issues.append(f"録画区間ログがありません: {log_path}")
+        log_paths = active_log_paths(month_dir)
+        if not log_paths:
+            issues.append(f"録画区間ログがありません: {month_dir}")
             continue
 
-        totals, rows, legacy_rows = parse_month_log(log_path)
+        totals: dict[str, int] = {}
+        rows = 0
+        legacy_rows = 0
+        for log_path in log_paths:
+            log_totals, log_rows, log_legacy_rows = parse_month_log(log_path)
+            rows += log_rows
+            legacy_rows += log_legacy_rows
+            for filename, seconds in log_totals.items():
+                totals[filename] = totals.get(filename, 0) + seconds
         print(f"{month_dir.name}: {rows}区間 legacy_idなし={legacy_rows}")
         for filename, log_seconds in sorted(totals.items()):
-            video_path = month_dir / filename
-            if not video_path.exists():
-                issues.append(f"動画がありません: {video_path}")
+            video_path = video_path_for(month_dir, filename)
+            if video_path is None:
+                issues.append(f"動画がありません: {month_dir}/????/{filename}")
                 continue
             stream = video_stream(video_path)
             frames = int(stream.get("nb_frames") or 0)
@@ -90,7 +117,7 @@ def main() -> int:
             if avg_rate != "1/1":
                 issues.append(f"1FPSではありません: {filename} avg={avg_rate}")
 
-        for hidden in month_dir.glob(".*"):
+        for hidden in month_dir.glob("**/.*"):
             if hidden.name.startswith((".repair-", ".daily-", ".rename-merge-")):
                 issues.append(f"一時ファイルが残っています: {hidden}")
 

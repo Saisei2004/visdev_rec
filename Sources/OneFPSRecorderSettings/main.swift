@@ -4,6 +4,7 @@ enum SharedSettings {
     private static let defaults = UserDefaults(suiteName: "local.codex.OneFPSRecorder") ?? .standard
     private static let recordingNameKey = "recordingName"
     private static let showOverlayKey = "showRecordingOverlay"
+    private static let showPauseOverlayKey = "showPauseOverlay"
     private static let showMonthlyScoreKey = "showMonthlyScore"
     private static let hourlyRateKey = "hourlyRate"
     private static let monthlyGoalKey = "monthlyGoal"
@@ -31,6 +32,18 @@ enum SharedSettings {
         }
         set {
             defaults.set(newValue, forKey: showOverlayKey)
+        }
+    }
+
+    static var showPauseOverlay: Bool {
+        get {
+            if defaults.object(forKey: showPauseOverlayKey) == nil {
+                return true
+            }
+            return defaults.bool(forKey: showPauseOverlayKey)
+        }
+        set {
+            defaults.set(newValue, forKey: showPauseOverlayKey)
         }
     }
 
@@ -101,6 +114,7 @@ final class SettingsDelegate: NSObject, NSApplicationDelegate {
     private var window: NSWindow!
     private let nameField = NSTextField(string: SharedSettings.recordingName)
     private let overlayCheckbox = NSButton(checkboxWithTitle: "録画中パネルを表示する", target: nil, action: nil)
+    private let pauseOverlayCheckbox = NSButton(checkboxWithTitle: "一時停止パネルを表示する", target: nil, action: nil)
     private let monthlyScoreCheckbox = NSButton(checkboxWithTitle: "月間スコアを表示する", target: nil, action: nil)
     private let hourlyRateField = NSTextField(string: "\(SharedSettings.hourlyRate)")
     private let monthlyGoalField = NSTextField(string: "\(SharedSettings.monthlyGoal)")
@@ -119,7 +133,7 @@ final class SettingsDelegate: NSObject, NSApplicationDelegate {
 
     private func buildWindow() {
         window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 500, height: 430),
+            contentRect: NSRect(x: 0, y: 0, width: 500, height: 456),
             styleMask: [.titled, .closable],
             backing: .buffered,
             defer: false
@@ -146,34 +160,37 @@ final class SettingsDelegate: NSObject, NSApplicationDelegate {
         overlayCheckbox.state = SharedSettings.showOverlay ? .on : .off
         overlayCheckbox.frame = NSRect(x: 130, y: 294, width: 240, height: 22)
 
+        pauseOverlayCheckbox.state = SharedSettings.showPauseOverlay ? .on : .off
+        pauseOverlayCheckbox.frame = NSRect(x: 130, y: 268, width: 240, height: 22)
+
         let scoreTitle = NSTextField(labelWithString: "月間スコア")
         scoreTitle.font = NSFont.systemFont(ofSize: 13, weight: .semibold)
-        scoreTitle.frame = NSRect(x: 30, y: 250, width: 90, height: 20)
+        scoreTitle.frame = NSRect(x: 30, y: 238, width: 90, height: 20)
 
         monthlyScoreCheckbox.state = SharedSettings.showMonthlyScore ? .on : .off
-        monthlyScoreCheckbox.frame = NSRect(x: 130, y: 250, width: 200, height: 22)
+        monthlyScoreCheckbox.frame = NSRect(x: 130, y: 238, width: 200, height: 22)
 
         let hourlyRateLabel = NSTextField(labelWithString: "係数")
         hourlyRateLabel.font = NSFont.systemFont(ofSize: 12)
-        hourlyRateLabel.frame = NSRect(x: 130, y: 214, width: 60, height: 20)
+        hourlyRateLabel.frame = NSRect(x: 130, y: 202, width: 60, height: 20)
 
-        hourlyRateField.frame = NSRect(x: 190, y: 208, width: 100, height: 28)
+        hourlyRateField.frame = NSRect(x: 190, y: 196, width: 100, height: 28)
         hourlyRateField.placeholderString = "2000"
 
         let goalLabel = NSTextField(labelWithString: "月末ライン")
         goalLabel.font = NSFont.systemFont(ofSize: 12)
-        goalLabel.frame = NSRect(x: 310, y: 214, width: 78, height: 20)
+        goalLabel.frame = NSRect(x: 310, y: 202, width: 78, height: 20)
 
-        monthlyGoalField.frame = NSRect(x: 390, y: 208, width: 80, height: 28)
+        monthlyGoalField.frame = NSRect(x: 390, y: 196, width: 80, height: 28)
         monthlyGoalField.placeholderString = "100000"
 
         glowCheckbox.state = SharedSettings.glowWhenGoalReached ? .on : .off
-        glowCheckbox.frame = NSRect(x: 130, y: 178, width: 220, height: 22)
+        glowCheckbox.frame = NSRect(x: 130, y: 166, width: 220, height: 22)
 
         let scoreHint = NSTextField(labelWithString: "係数の標準値は 2000。月末ラインを超えると録画中パネルを発光できます。")
         scoreHint.font = NSFont.systemFont(ofSize: 11)
         scoreHint.textColor = .secondaryLabelColor
-        scoreHint.frame = NSRect(x: 130, y: 152, width: 340, height: 18)
+        scoreHint.frame = NSRect(x: 130, y: 140, width: 340, height: 18)
 
         let pauseTitle = NSTextField(labelWithString: "一時停止")
         pauseTitle.font = NSFont.systemFont(ofSize: 13, weight: .semibold)
@@ -205,6 +222,7 @@ final class SettingsDelegate: NSObject, NSApplicationDelegate {
         content.addSubview(nameField)
         content.addSubview(hint)
         content.addSubview(overlayCheckbox)
+        content.addSubview(pauseOverlayCheckbox)
         content.addSubview(scoreTitle)
         content.addSubview(monthlyScoreCheckbox)
         content.addSubview(hourlyRateLabel)
@@ -226,6 +244,7 @@ final class SettingsDelegate: NSObject, NSApplicationDelegate {
         let newName = SharedSettings.sanitizedRecordingName(nameField.stringValue)
         SharedSettings.recordingName = newName
         SharedSettings.showOverlay = overlayCheckbox.state == .on
+        SharedSettings.showPauseOverlay = pauseOverlayCheckbox.state == .on
         SharedSettings.showMonthlyScore = monthlyScoreCheckbox.state == .on
         SharedSettings.hourlyRate = Int(hourlyRateField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)) ?? 2000
         SharedSettings.monthlyGoal = Int(monthlyGoalField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)) ?? 100000
@@ -257,15 +276,9 @@ final class SettingsDelegate: NSObject, NSApplicationDelegate {
         for monthURL in months {
             let values = try? monthURL.resourceValues(forKeys: [.isDirectoryKey])
             guard values?.isDirectory == true else { continue }
-            guard let files = try? FileManager.default.contentsOfDirectory(
-                at: monthURL,
-                includingPropertiesForKeys: nil,
-                options: [.skipsHiddenFiles]
-            ) else { continue }
-
-            for fileURL in files where fileURL.pathExtension.lowercased() == "mp4" {
+            for fileURL in canonicalDailyVideoURLs(in: monthURL) {
                 guard let day = recordingDay(from: fileURL.deletingPathExtension().lastPathComponent) else { continue }
-                let newURL = monthURL.appendingPathComponent("\(day)_\(newName).mp4")
+                let newURL = fileURL.deletingLastPathComponent().appendingPathComponent("\(day)_\(newName).mp4")
                 guard fileURL.path != newURL.path else { continue }
                 if FileManager.default.fileExists(atPath: newURL.path) {
                     _ = mergeVideoFile(fileURL, into: newURL)
@@ -274,6 +287,26 @@ final class SettingsDelegate: NSObject, NSApplicationDelegate {
                 try? FileManager.default.moveItem(at: fileURL, to: newURL)
             }
         }
+    }
+
+    private func canonicalDailyVideoURLs(in monthURL: URL) -> [URL] {
+        guard let enumerator = FileManager.default.enumerator(
+            at: monthURL,
+            includingPropertiesForKeys: [.isRegularFileKey],
+            options: [.skipsHiddenFiles]
+        ) else { return [] }
+        var urls: [URL] = []
+        for case let fileURL as URL in enumerator {
+            if fileURL.pathComponents.contains("バックアップ") { continue }
+            if fileURL.pathExtension.lowercased() == "mp4",
+               let basename = Optional(fileURL.deletingPathExtension().lastPathComponent),
+               !basename.hasPrefix("."),
+               !basename.contains(".before-"),
+               recordingDay(from: basename) != nil {
+                urls.append(fileURL)
+            }
+        }
+        return urls
     }
 
     private func mergeVideoFile(_ sourceURL: URL, into targetURL: URL) -> Bool {
@@ -367,24 +400,25 @@ final class SettingsDelegate: NSObject, NSApplicationDelegate {
             let month = monthURL.lastPathComponent
             guard month.range(of: #"^\d{4}-\d{2}$"#, options: .regularExpression) != nil else { continue }
 
-            let logURL = monthURL.appendingPathComponent("録画区間ログ-\(month).txt")
-            guard let content = try? String(contentsOf: logURL, encoding: .utf8) else { continue }
+            for logURL in activeRecordingLogURLs(in: monthURL, month: month) {
+                guard let content = try? String(contentsOf: logURL, encoding: .utf8) else { continue }
 
-            let rewrittenLines = content.split(separator: "\n", omittingEmptySubsequences: false).map { rawLine -> String in
-                let line = String(rawLine)
-                let columns = line.split(separator: "\t", omittingEmptySubsequences: false).map(String.init)
-                guard columns.count >= 4 else { return line }
-                let dayText = String(columns[0].prefix(10))
-                guard dayText.count == 10 else { return line }
-                let monthDay = dayText.replacingOccurrences(of: "-", with: "").suffix(4)
-                guard monthDay.count == 4 else { return line }
+                let rewrittenLines = content.split(separator: "\n", omittingEmptySubsequences: false).map { rawLine -> String in
+                    let line = String(rawLine)
+                    let columns = line.split(separator: "\t", omittingEmptySubsequences: false).map(String.init)
+                    guard columns.count >= 4 else { return line }
+                    let dayText = String(columns[0].prefix(10))
+                    guard dayText.count == 10 else { return line }
+                    let monthDay = dayText.replacingOccurrences(of: "-", with: "").suffix(4)
+                    guard monthDay.count == 4 else { return line }
 
-                var updatedColumns = columns
-                updatedColumns[3] = "\(monthDay)_\(targetName).mp4"
-                return updatedColumns.joined(separator: "\t")
+                    var updatedColumns = columns
+                    updatedColumns[3] = "\(monthDay)_\(targetName).mp4"
+                    return updatedColumns.joined(separator: "\t")
+                }
+
+                try? rewrittenLines.joined(separator: "\n").write(to: logURL, atomically: true, encoding: .utf8)
             }
-
-            try? rewrittenLines.joined(separator: "\n").write(to: logURL, atomically: true, encoding: .utf8)
         }
     }
 
@@ -411,13 +445,18 @@ final class SettingsDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func syncDerivedLogs(monthURL: URL, month: String) {
-        let logURL = monthURL.appendingPathComponent("録画区間ログ-\(month).txt")
-        guard let content = try? String(contentsOf: logURL, encoding: .utf8) else { return }
+        let rows = activeRecordingLogURLs(in: monthURL, month: month).flatMap { logURL in
+            ((try? String(contentsOf: logURL, encoding: .utf8)) ?? "")
+                .split(separator: "\n")
+                .dropFirst()
+                .map(String.init)
+        }
+        guard !rows.isEmpty else { return }
 
         var dailyTotals: [String: (seconds: Int, count: Int)] = [:]
         var monthSeconds = 0
         var monthCount = 0
-        for line in content.split(separator: "\n").dropFirst() {
+        for line in rows {
             let columns = line.split(separator: "\t", omittingEmptySubsequences: false).map(String.init)
             guard columns.count >= 3 else { continue }
             let seconds = parsedDurationSeconds(columns[2])
@@ -457,6 +496,38 @@ final class SettingsDelegate: NSObject, NSApplicationDelegate {
             atomically: true,
             encoding: .utf8
         )
+    }
+
+    private func activeRecordingLogURLs(in monthURL: URL, month: String) -> [URL] {
+        var urls: [URL] = []
+        if let items = try? FileManager.default.contentsOfDirectory(
+            at: monthURL,
+            includingPropertiesForKeys: [.isDirectoryKey],
+            options: [.skipsHiddenFiles]
+        ) {
+            for itemURL in items {
+                let values = try? itemURL.resourceValues(forKeys: [.isDirectoryKey])
+                guard values?.isDirectory == true else { continue }
+                let day = itemURL.lastPathComponent
+                guard day.range(of: #"^\d{4}$"#, options: .regularExpression) != nil else { continue }
+                if let files = try? FileManager.default.contentsOfDirectory(
+                    at: itemURL,
+                    includingPropertiesForKeys: nil,
+                    options: [.skipsHiddenFiles]
+                ) {
+                    urls.append(contentsOf: files.filter {
+                        $0.pathExtension == "txt" && $0.lastPathComponent.contains("録画区間")
+                    })
+                }
+            }
+        }
+        if urls.isEmpty {
+            let legacy = monthURL.appendingPathComponent("録画区間ログ-\(month).txt")
+            if FileManager.default.fileExists(atPath: legacy.path) {
+                urls.append(legacy)
+            }
+        }
+        return urls.sorted { $0.path < $1.path }
     }
 
     private func parsedDurationSeconds(_ text: String) -> Int {
