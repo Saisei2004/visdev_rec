@@ -1302,9 +1302,7 @@ final class OneFPSRecorder: NSObject {
         }
 
         let listURL = frameDirectory.appendingPathComponent("frames.txt")
-        let frameList = frameNames
-            .map { "file '\(Self.concatEscapedPath(frameDirectory.appendingPathComponent($0).path))'\nduration 1" }
-            .joined(separator: "\n") + "\n"
+        let frameList = Self.frameConcatList(frameNames: frameNames, in: frameDirectory)
         do {
             try frameList.write(to: listURL, atomically: true, encoding: .utf8)
         } catch {
@@ -1324,7 +1322,7 @@ final class OneFPSRecorder: NSObject {
             "-f", "concat",
             "-safe", "0",
             "-i", listURL.path,
-            "-vf", "scale=960:600:force_original_aspect_ratio=decrease,pad=960:600:(ow-iw)/2:(oh-ih)/2",
+            "-vf", "scale=960:600:force_original_aspect_ratio=decrease,pad=960:600:(ow-iw)/2:(oh-ih)/2,fps=1",
             "-c:v", "libx264",
             "-preset", "veryfast",
             "-tune", "stillimage",
@@ -1389,8 +1387,9 @@ final class OneFPSRecorder: NSObject {
         do {
             try FileManager.default.createDirectory(at: dailyURL.deletingLastPathComponent(), withIntermediateDirectories: true)
             if !FileManager.default.fileExists(atPath: dailyURL.path) {
+                guard videoFrameCount(segmentURL) == expectedAddedFrames else { return false }
                 try FileManager.default.moveItem(at: segmentURL, to: dailyURL)
-                return videoFrameCount(dailyURL) >= expectedAddedFrames
+                return videoFrameCount(dailyURL) == expectedAddedFrames
             }
 
             let originalFrameCount = videoFrameCount(dailyURL)
@@ -1424,7 +1423,7 @@ final class OneFPSRecorder: NSObject {
                 try? FileManager.default.removeItem(at: tempDailyURL)
                 return false
             }
-            guard videoFrameCount(tempDailyURL) >= originalFrameCount + expectedAddedFrames else {
+            guard videoFrameCount(tempDailyURL) == originalFrameCount + expectedAddedFrames else {
                 try? FileManager.default.removeItem(at: tempDailyURL)
                 return false
             }
@@ -1434,7 +1433,7 @@ final class OneFPSRecorder: NSObject {
             try FileManager.default.moveItem(at: dailyURL, to: backupURL)
             do {
                 try FileManager.default.moveItem(at: tempDailyURL, to: dailyURL)
-                guard videoFrameCount(dailyURL) >= originalFrameCount + expectedAddedFrames else {
+                guard videoFrameCount(dailyURL) == originalFrameCount + expectedAddedFrames else {
                     try? FileManager.default.moveItem(at: dailyURL, to: tempDailyURL)
                     try? FileManager.default.moveItem(at: backupURL, to: dailyURL)
                     try? FileManager.default.removeItem(at: tempDailyURL)
@@ -1518,7 +1517,7 @@ final class OneFPSRecorder: NSObject {
                 options: [.skipsHiddenFiles]
             ) else { continue }
 
-            for fileURL in files where fileURL.pathExtension.lowercased() == "mp4" {
+            for fileURL in files where isCanonicalDailyVideo(fileURL) {
                 guard let day = recordingDay(from: fileURL.deletingPathExtension().lastPathComponent) else { continue }
                 let newURL = monthURL.appendingPathComponent("\(day)_\(targetName).mp4")
                 guard fileURL.path != newURL.path else { continue }
@@ -1529,6 +1528,16 @@ final class OneFPSRecorder: NSObject {
                 try? FileManager.default.moveItem(at: fileURL, to: newURL)
             }
         }
+    }
+
+    private static func isCanonicalDailyVideo(_ url: URL) -> Bool {
+        guard url.pathExtension.lowercased() == "mp4" else { return false }
+        let basename = url.deletingPathExtension().lastPathComponent
+        guard !basename.hasPrefix(".") else { return false }
+        guard !basename.contains(".before-") else { return false }
+        guard !basename.contains(".rename-") else { return false }
+        guard !basename.contains(".daily-") else { return false }
+        return recordingDay(from: basename) != nil
     }
 
     private static func mergeVideoFile(_ sourceURL: URL, into targetURL: URL) -> Bool {
@@ -1773,9 +1782,7 @@ final class OneFPSRecorder: NSObject {
         let segmentID = metadata?.id ?? UUID().uuidString
         let outputURL = frameDirectory.appendingPathComponent("recovered-\(timestamp()).mp4")
         let listURL = frameDirectory.appendingPathComponent("frames.txt")
-        let frameList = frameNames
-            .map { "file '\(concatEscapedPath(frameDirectory.appendingPathComponent($0).path))'\nduration 1" }
-            .joined(separator: "\n") + "\n"
+        let frameList = frameConcatList(frameNames: frameNames, in: frameDirectory)
         guard (try? frameList.write(to: listURL, atomically: true, encoding: .utf8)) != nil else {
             return
         }
@@ -1792,7 +1799,7 @@ final class OneFPSRecorder: NSObject {
                     "-f", "concat",
                     "-safe", "0",
                     "-i", listURL.path,
-                    "-vf", "scale=960:600:force_original_aspect_ratio=decrease,pad=960:600:(ow-iw)/2:(oh-ih)/2",
+                    "-vf", "scale=960:600:force_original_aspect_ratio=decrease,pad=960:600:(ow-iw)/2:(oh-ih)/2,fps=1",
                     "-c:v", "libx264",
                     "-preset", "veryfast",
                     "-tune", "stillimage",
@@ -2248,6 +2255,18 @@ final class OneFPSRecorder: NSObject {
 
     private static func concatEscapedPath(_ path: String) -> String {
         path.replacingOccurrences(of: "'", with: "'\\''")
+    }
+
+    private static func frameConcatList(frameNames: [String], in frameDirectory: URL) -> String {
+        guard let lastFrameName = frameNames.last else { return "" }
+        var lines = frameNames.flatMap { frameName in
+            [
+                "file '\(concatEscapedPath(frameDirectory.appendingPathComponent(frameName).path))'",
+                "duration 1"
+            ]
+        }
+        lines.append("file '\(concatEscapedPath(frameDirectory.appendingPathComponent(lastFrameName).path))'")
+        return lines.joined(separator: "\n") + "\n"
     }
 
     private static func displayBoundsContainingMouse() -> CGRect? {
