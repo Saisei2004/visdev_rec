@@ -2090,6 +2090,7 @@ final class OneFPSRecorder: NSObject {
             do {
                 try FileManager.default.moveItem(at: tempURL, to: videoURL)
                 if videoFrameCount(videoURL) == targetFrames {
+                    try? FileManager.default.removeItem(at: backupURL)
                     return true
                 }
                 try? FileManager.default.moveItem(at: videoURL, to: tempURL)
