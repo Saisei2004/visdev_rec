@@ -1954,16 +1954,22 @@ final class OneFPSRecorder: NSObject {
     }
 
     static func recoverOrphanedFrameDirectories() {
-        guard let items = try? FileManager.default.contentsOfDirectory(
+        guard let enumerator = FileManager.default.enumerator(
             at: recordingsDirectory,
             includingPropertiesForKeys: [.isDirectoryKey],
             options: []
         ) else { return }
 
-        for itemURL in items where itemURL.lastPathComponent.hasPrefix(".frames-") {
+        var frameDirectories: [URL] = []
+        for case let itemURL as URL in enumerator where itemURL.lastPathComponent.hasPrefix(".frames-") {
             let values = try? itemURL.resourceValues(forKeys: [.isDirectoryKey])
             guard values?.isDirectory == true else { continue }
-            recoverFrameDirectory(itemURL)
+            frameDirectories.append(itemURL)
+            enumerator.skipDescendants()
+        }
+
+        for frameDirectory in frameDirectories.sorted(by: { $0.path < $1.path }) {
+            recoverFrameDirectory(frameDirectory)
         }
     }
 
