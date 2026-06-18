@@ -173,7 +173,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         OneFPSRecorder.migrateSavedTextFileNames()
         OneFPSRecorder.renameExistingRecordings(from: "", to: RecorderSettings.recordingName)
         OneFPSRecorder.rewriteRecordingLogFileNames(to: RecorderSettings.recordingName)
-        OneFPSRecorder.reconcileLogsWithDailyVideos()
+        OneFPSRecorder.reconcileDailyVideosWithLogs()
         OneFPSRecorder.syncAllDerivedLogs()
 
         setupStatusItem()
@@ -1997,7 +1997,7 @@ final class OneFPSRecorder: NSObject {
         }
     }
 
-    static func reconcileLogsWithDailyVideos() {
+    static func reconcileDailyVideosWithLogs() {
         guard let months = try? FileManager.default.contentsOfDirectory(
             at: recordingsDirectory,
             includingPropertiesForKeys: [.isDirectoryKey],
@@ -2009,71 +2009,97 @@ final class OneFPSRecorder: NSObject {
             guard values?.isDirectory == true else { continue }
             let month = monthURL.lastPathComponent
             guard month.range(of: #"^\d{4}-\d{2}$"#, options: .regularExpression) != nil else { continue }
-            reconcileMonthLogWithDailyVideos(monthURL: monthURL, month: month)
+            reconcileMonthVideosWithLog(monthURL: monthURL, month: month)
         }
     }
 
-    private static func reconcileMonthLogWithDailyVideos(monthURL: URL, month: String) {
+    private static func reconcileMonthVideosWithLog(monthURL: URL, month: String) {
         let logURL = monthURL.appendingPathComponent("録画区間ログ-\(month).txt")
         guard let content = try? String(contentsOf: logURL, encoding: .utf8) else { return }
-        var lines = content.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
-        guard let header = lines.first, header.hasPrefix("開始\t終了\t時間\tファイル") else { return }
+        guard content.split(separator: "\n").first?.hasPrefix("開始\t終了\t時間\tファイル") == true else { return }
 
-        var changed = false
-        let grouped = Dictionary(grouping: lines.indices.dropFirst()) { index -> String in
-            let columns = lines[index].split(separator: "\t", omittingEmptySubsequences: false).map(String.init)
-            return columns.count >= 4 ? columns[3] : ""
+        var targetSecondsByFilename: [String: Int] = [:]
+        for line in content.split(separator: "\n").dropFirst() {
+            let columns = line.split(separator: "\t", omittingEmptySubsequences: false).map(String.init)
+            guard columns.count >= 4 else { continue }
+            let filename = columns[3]
+            guard filename.hasSuffix(".mp4") else { continue }
+            targetSecondsByFilename[filename, default: 0] += parsedDurationSeconds(columns[2])
         }
 
-        for (filename, indices) in grouped where filename.hasSuffix(".mp4") {
+        for (filename, targetSeconds) in targetSecondsByFilename where targetSeconds > 0 {
             let videoURL = monthURL.appendingPathComponent(filename)
-            let targetSeconds = videoFrameCount(videoURL)
-            guard targetSeconds > 0 else { continue }
-            let currentSeconds = indices.reduce(0) { total, index in
-                let columns = lines[index].split(separator: "\t", omittingEmptySubsequences: false).map(String.init)
-                return columns.count >= 3 ? total + parsedDurationSeconds(columns[2]) : total
-            }
-            let difference = targetSeconds - currentSeconds
-            guard difference != 0 else { continue }
-            if applyDurationDifference(difference, to: Array(indices.reversed()), lines: &lines) {
-                changed = true
-            }
-        }
-
-        guard changed else { return }
-        let backupURL = monthURL.appendingPathComponent("録画区間ログ-\(month).before-auto-reconcile-\(timestamp()).txt")
-        do {
-            try content.write(to: backupURL, atomically: true, encoding: .utf8)
-            try lines.joined(separator: "\n").write(to: logURL, atomically: true, encoding: .utf8)
-        } catch {
-            return
+            repairDailyVideo(videoURL, targetFrames: targetSeconds)
         }
     }
 
-    private static func applyDurationDifference(_ difference: Int, to indices: [Int], lines: inout [String]) -> Bool {
-        var remaining = difference
-        var changed = false
+    @discardableResult
+    private static func repairDailyVideo(_ videoURL: URL, targetFrames: Int) -> Bool {
+        guard FileManager.default.fileExists(atPath: videoURL.path) else { return false }
+        let currentFrames = videoFrameCount(videoURL)
+        guard currentFrames > 0, currentFrames != targetFrames else { return currentFrames == targetFrames }
 
-        for index in indices {
-            guard remaining != 0 else { break }
-            var columns = lines[index].split(separator: "\t", omittingEmptySubsequences: false).map(String.init)
-            guard columns.count >= 3 else { continue }
-            let currentSeconds = parsedDurationSeconds(columns[2])
-            let delta: Int
-            if remaining < 0 {
-                delta = max(remaining, -currentSeconds)
-            } else {
-                delta = remaining
-            }
-            let adjustedSeconds = currentSeconds + delta
-            guard adjustedSeconds >= 0 else { continue }
-            columns[2] = "\(adjustedSeconds)秒"
-            lines[index] = columns.joined(separator: "\t")
-            remaining -= delta
-            changed = true
+        let tempURL = videoURL.deletingLastPathComponent()
+            .appendingPathComponent(".repair-\(timestamp())-\(UUID().uuidString).mp4")
+        let backupURL = videoURL.deletingLastPathComponent()
+            .appendingPathComponent("\(videoURL.deletingPathExtension().lastPathComponent).before-video-reconcile-\(timestamp()).mp4")
+        let ffmpeg = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".local/bin/ffmpeg")
+        let filter: String
+        if currentFrames < targetFrames {
+            filter = "tpad=stop_mode=clone:stop_duration=\(targetFrames - currentFrames),fps=1,scale=960:600:force_original_aspect_ratio=decrease,pad=960:600:(ow-iw)/2:(oh-ih)/2"
+        } else {
+            filter = "trim=duration=\(targetFrames),setpts=PTS-STARTPTS,fps=1,scale=960:600:force_original_aspect_ratio=decrease,pad=960:600:(ow-iw)/2:(oh-ih)/2"
         }
 
-        return changed && remaining == 0
+        let process = Process()
+        process.executableURL = ffmpeg
+        process.arguments = [
+            "-hide_banner",
+            "-loglevel", "error",
+            "-i", videoURL.path,
+            "-vf", filter,
+            "-c:v", "libx264",
+            "-preset", "veryfast",
+            "-tune", "stillimage",
+            "-pix_fmt", "yuv420p",
+            "-an",
+            "-movflags", "+faststart",
+            tempURL.path,
+            "-y"
+        ]
+        process.standardOutput = Pipe()
+        process.standardError = Pipe()
+
+        do {
+            try process.run()
+            process.waitUntilExit()
+            guard process.terminationStatus == 0, videoFrameCount(tempURL) == targetFrames else {
+                try? FileManager.default.removeItem(at: tempURL)
+                return false
+            }
+
+            try FileManager.default.moveItem(at: videoURL, to: backupURL)
+            do {
+                try FileManager.default.moveItem(at: tempURL, to: videoURL)
+                if videoFrameCount(videoURL) == targetFrames {
+                    return true
+                }
+                try? FileManager.default.moveItem(at: videoURL, to: tempURL)
+                try? FileManager.default.moveItem(at: backupURL, to: videoURL)
+                try? FileManager.default.removeItem(at: tempURL)
+                return false
+            } catch {
+                if FileManager.default.fileExists(atPath: backupURL.path) {
+                    try? FileManager.default.moveItem(at: backupURL, to: videoURL)
+                }
+                try? FileManager.default.removeItem(at: tempURL)
+                return false
+            }
+        } catch {
+            try? FileManager.default.removeItem(at: tempURL)
+            return false
+        }
     }
 
     @discardableResult
