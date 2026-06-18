@@ -1322,7 +1322,7 @@ final class OneFPSRecorder: NSObject {
             "-f", "concat",
             "-safe", "0",
             "-i", listURL.path,
-            "-vf", "scale=960:600:force_original_aspect_ratio=decrease,pad=960:600:(ow-iw)/2:(oh-ih)/2,fps=1",
+            "-vf", "scale=960:600:force_original_aspect_ratio=decrease,pad=960:600:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=1",
             "-c:v", "libx264",
             "-preset", "veryfast",
             "-tune", "stillimage",
@@ -1406,7 +1406,7 @@ final class OneFPSRecorder: NSObject {
                 "-i", dailyURL.path,
                 "-i", segmentURL.path,
                 "-filter_complex",
-                "[0:v][1:v]concat=n=2:v=1:a=0,scale=960:600:force_original_aspect_ratio=decrease,pad=960:600:(ow-iw)/2:(oh-ih)/2,fps=1[v]",
+                "[0:v]scale=960:600:force_original_aspect_ratio=decrease,pad=960:600:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=1[v0];[1:v]scale=960:600:force_original_aspect_ratio=decrease,pad=960:600:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=1[v1];[v0][v1]concat=n=2:v=1:a=0[v]",
                 "-map", "[v]",
                 "-c:v", "libx264",
                 "-preset", "veryfast",
@@ -1562,7 +1562,7 @@ final class OneFPSRecorder: NSObject {
                 "-f", "concat",
                 "-safe", "0",
                 "-i", listURL.path,
-                "-vf", "scale=960:600:force_original_aspect_ratio=decrease,pad=960:600:(ow-iw)/2:(oh-ih)/2,fps=1",
+                "-vf", "scale=960:600:force_original_aspect_ratio=decrease,pad=960:600:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=1",
                 "-c:v", "libx264",
                 "-preset", "veryfast",
                 "-tune", "stillimage",
@@ -1799,7 +1799,7 @@ final class OneFPSRecorder: NSObject {
                     "-f", "concat",
                     "-safe", "0",
                     "-i", listURL.path,
-                    "-vf", "scale=960:600:force_original_aspect_ratio=decrease,pad=960:600:(ow-iw)/2:(oh-ih)/2,fps=1",
+                    "-vf", "scale=960:600:force_original_aspect_ratio=decrease,pad=960:600:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=1",
                     "-c:v", "libx264",
                     "-preset", "veryfast",
                     "-tune", "stillimage",
@@ -2054,9 +2054,9 @@ final class OneFPSRecorder: NSObject {
             .appendingPathComponent(".local/bin/ffmpeg")
         let filter: String
         if currentFrames < targetFrames {
-            filter = "tpad=stop_mode=clone:stop_duration=\(targetFrames - currentFrames),fps=1,scale=960:600:force_original_aspect_ratio=decrease,pad=960:600:(ow-iw)/2:(oh-ih)/2"
+            filter = "tpad=stop_mode=clone:stop_duration=\(targetFrames - currentFrames),fps=1,scale=960:600:force_original_aspect_ratio=decrease,pad=960:600:(ow-iw)/2:(oh-ih)/2,setsar=1"
         } else {
-            filter = "trim=duration=\(targetFrames),setpts=PTS-STARTPTS,fps=1,scale=960:600:force_original_aspect_ratio=decrease,pad=960:600:(ow-iw)/2:(oh-ih)/2"
+            filter = "trim=duration=\(targetFrames),setpts=PTS-STARTPTS,fps=1,scale=960:600:force_original_aspect_ratio=decrease,pad=960:600:(ow-iw)/2:(oh-ih)/2,setsar=1"
         }
 
         let process = Process()
