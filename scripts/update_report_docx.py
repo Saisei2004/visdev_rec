@@ -147,7 +147,17 @@ def fill_template_table(table_element, entry):
 
 
 def page_break_element():
-    return ET.fromstring(paragraph(page_break=True))
+    paragraph_element = ET.Element(q("p"))
+    run = ET.SubElement(paragraph_element, q("r"))
+    br = ET.SubElement(run, q("br"))
+    br.set(q("type"), "page")
+    return paragraph_element
+
+
+def empty_paragraph_element():
+    paragraph_element = ET.Element(q("p"))
+    ET.SubElement(ET.SubElement(paragraph_element, q("r")), q("t"))
+    return paragraph_element
 
 
 def build_document_tree_from_template(original_doc, entries):
@@ -179,6 +189,7 @@ def build_document_tree_from_template(original_doc, entries):
         table = copy.deepcopy(table_template)
         fill_template_table(table, entry)
         body.append(table)
+        body.append(empty_paragraph_element())
 
     if sect_pr is not None:
         body.append(copy.deepcopy(sect_pr))
