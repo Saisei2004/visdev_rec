@@ -17,6 +17,8 @@ enum RecorderSettings {
     private static let mouseIdleMinutesKey = "mouseIdleMinutes"
     private static let startMessageIndexKey = "startMessageIndex"
     private static let stopMessageIndexKey = "stopMessageIndex"
+    private static let reporterNameKey = "reporterName"
+    private static let driveFolderURLKey = "driveFolderURL"
 
     static var recordingName: String {
         get {
@@ -146,6 +148,24 @@ enum RecorderSettings {
         nextIndex(forKey: stopMessageIndexKey, modulo: modulo)
     }
 
+    static var reporterName: String {
+        get {
+            defaults.synchronize()
+            let saved = defaults.string(forKey: reporterNameKey) ?? "馬場幸成"
+            let trimmed = saved.trimmingCharacters(in: .whitespacesAndNewlines)
+            return trimmed.isEmpty ? "馬場幸成" : trimmed
+        }
+        set { defaults.set(newValue.trimmingCharacters(in: .whitespacesAndNewlines), forKey: reporterNameKey) }
+    }
+
+    static var driveFolderURL: String {
+        get {
+            defaults.synchronize()
+            return defaults.string(forKey: driveFolderURLKey) ?? ""
+        }
+        set { defaults.set(newValue.trimmingCharacters(in: .whitespacesAndNewlines), forKey: driveFolderURLKey) }
+    }
+
     private static func nextIndex(forKey key: String, modulo: Int) -> Int {
         guard modulo > 0 else { return 0 }
         let current = defaults.integer(forKey: key)
@@ -162,6 +182,24 @@ enum RecorderSettings {
         let safeName = sanitized.isEmpty ? "録画" : sanitized
         return String(safeName.prefix(48))
     }
+}
+
+struct ReportSubmissionForm {
+    var date: Date
+    var reporter: String
+    var workPlan: String
+    var workContent: String
+    var nextTask: String
+    var status: String
+    var message: String
+    var videoLink: String
+    var driveFolderURL: String
+}
+
+struct ReportSubmissionResult {
+    var reportURL: URL
+    var submittedVideoURL: URL
+    var hours: Int
 }
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
@@ -182,6 +220,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var lastCommandLine = ""
     private var lockFileHandle: FileHandle?
     private var settingsWindowController: SettingsWindowController?
+    private var reportWindowController: ReportSubmissionWindowController?
     private var overlayMessage = ""
     private var activityTimer: DispatchSourceTimer?
     private var lastMouseLocation: CGPoint?
@@ -249,6 +288,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let folderItem = NSMenuItem(title: "保存フォルダを開く", action: #selector(openFolder), keyEquivalent: "")
         folderItem.target = self
         menu.addItem(folderItem)
+
+        let reportItem = NSMenuItem(title: "業務報告を提出...", action: #selector(openReportSubmission), keyEquivalent: "")
+        reportItem.target = self
+        menu.addItem(reportItem)
 
         let settingsItem = NSMenuItem(title: "設定...", action: #selector(openSettings), keyEquivalent: "")
         settingsItem.target = self
@@ -507,6 +550,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSWorkspace.shared.open(OneFPSRecorder.recordingsDirectory)
     }
 
+    @objc private func openReportSubmission() {
+        log("Report submission requested")
+        if recorder.isRecording {
+            recorder.flushCurrentSegment()
+        }
+        reportWindowController = ReportSubmissionWindowController { [weak self] form in
+            RecorderSettings.reporterName = form.reporter
+            RecorderSettings.driveFolderURL = form.driveFolderURL
+            do {
+                let result = try OneFPSRecorder.submitReport(form)
+                self?.showAlert("業務報告を更新しました。\n業務時間: \(result.hours)h\n\n報告: \(result.reportURL.path)\n提出動画: \(result.submittedVideoURL.path)")
+                if let driveURL = URL(string: form.driveFolderURL), !form.driveFolderURL.isEmpty {
+                    NSWorkspace.shared.open(driveURL)
+                } else {
+                    NSWorkspace.shared.open(result.submittedVideoURL.deletingLastPathComponent())
+                }
+            } catch {
+                self?.showAlert(error.localizedDescription)
+            }
+        }
+        reportWindowController?.showWindow(nil)
+    }
+
     @objc private func openSettings() {
         log("Settings requested")
         let helperURL = Bundle.main.bundleURL
@@ -723,6 +789,140 @@ enum RecorderState {
     case recording(Date)
     case encoding
     case error(String)
+}
+
+final class ReportSubmissionWindowController: NSWindowController, NSWindowDelegate {
+    private let dateField = NSTextField(string: ReportSubmissionWindowController.defaultDateText())
+    private let reporterField = NSTextField(string: RecorderSettings.reporterName)
+    private let workPlanField = NSTextField(string: "Visitasの開発")
+    private let workContentField = NSTextField(string: "")
+    private let nextTaskField = NSTextField(string: "")
+    private let statusField = NSTextField(string: "順調")
+    private let messageField = NSTextField(string: "")
+    private let videoLinkField = NSTextField(string: "")
+    private let driveFolderURLField = NSTextField(string: RecorderSettings.driveFolderURL)
+    private let onSubmit: (ReportSubmissionForm) -> Void
+
+    init(onSubmit: @escaping (ReportSubmissionForm) -> Void) {
+        self.onSubmit = onSubmit
+        let window = NSPanel(
+            contentRect: NSRect(x: 0, y: 0, width: 620, height: 430),
+            styleMask: [.titled, .closable, .utilityWindow],
+            backing: .buffered,
+            defer: false
+        )
+        window.title = "業務報告を提出"
+        window.level = .screenSaver
+        window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+        window.hidesOnDeactivate = false
+        window.isFloatingPanel = true
+        window.center()
+        window.isReleasedWhenClosed = false
+        super.init(window: window)
+        window.delegate = self
+        buildUI()
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    override func showWindow(_ sender: Any?) {
+        dateField.stringValue = Self.defaultDateText()
+        reporterField.stringValue = RecorderSettings.reporterName
+        driveFolderURLField.stringValue = RecorderSettings.driveFolderURL
+        super.showWindow(sender)
+        window?.makeKeyAndOrderFront(nil)
+        window?.orderFrontRegardless()
+    }
+
+    private func buildUI() {
+        guard let contentView = window?.contentView else { return }
+        let fields: [(String, NSTextField, String)] = [
+            ("日付", dateField, "yyyy-MM-dd"),
+            ("担当者", reporterField, ""),
+            ("業務プラン", workPlanField, ""),
+            ("業務内容", workContentField, ""),
+            ("業務動画リンク", videoLinkField, "Drive共有リンクを取得できたら貼る"),
+            ("次回までのTask", nextTaskField, ""),
+            ("業務は順調ですか？", statusField, ""),
+            ("Visitasへのメッセージ", messageField, ""),
+            ("DriveフォルダURL", driveFolderURLField, "提出後に開くフォルダ")
+        ]
+
+        var y = 360
+        for (label, field, placeholder) in fields {
+            let labelView = NSTextField(labelWithString: label)
+            labelView.font = NSFont.systemFont(ofSize: 12, weight: .semibold)
+            labelView.frame = NSRect(x: 28, y: y + 6, width: 130, height: 20)
+            field.frame = NSRect(x: 166, y: y, width: 420, height: 28)
+            field.placeholderString = placeholder
+            contentView.addSubview(labelView)
+            contentView.addSubview(field)
+            y -= 36
+        }
+
+        let hint = NSTextField(labelWithString: "業務時間は録画区間ログから切り捨て1時間単位で入ります。日付を変えると過去日の上書きになります。")
+        hint.font = NSFont.systemFont(ofSize: 11)
+        hint.textColor = .secondaryLabelColor
+        hint.frame = NSRect(x: 28, y: 46, width: 560, height: 18)
+        contentView.addSubview(hint)
+
+        let cancelButton = NSButton(title: "キャンセル", target: self, action: #selector(cancelPressed))
+        cancelButton.bezelStyle = .rounded
+        cancelButton.frame = NSRect(x: 410, y: 16, width: 82, height: 30)
+        contentView.addSubview(cancelButton)
+
+        let submitButton = NSButton(title: "提出", target: self, action: #selector(submitPressed))
+        submitButton.bezelStyle = .rounded
+        submitButton.keyEquivalent = "\r"
+        submitButton.frame = NSRect(x: 504, y: 16, width: 82, height: 30)
+        contentView.addSubview(submitButton)
+    }
+
+    @objc private func submitPressed() {
+        guard let date = Self.parseDate(dateField.stringValue) else {
+            showInlineAlert("日付は yyyy-MM-dd で入力してください。")
+            return
+        }
+        let form = ReportSubmissionForm(
+            date: date,
+            reporter: reporterField.stringValue,
+            workPlan: workPlanField.stringValue,
+            workContent: workContentField.stringValue,
+            nextTask: nextTaskField.stringValue,
+            status: statusField.stringValue,
+            message: messageField.stringValue,
+            videoLink: videoLinkField.stringValue,
+            driveFolderURL: driveFolderURLField.stringValue
+        )
+        onSubmit(form)
+        close()
+    }
+
+    @objc private func cancelPressed() {
+        close()
+    }
+
+    private func showInlineAlert(_ message: String) {
+        let alert = NSAlert()
+        alert.messageText = "業務報告"
+        alert.informativeText = message
+        alert.alertStyle = .warning
+        alert.runModal()
+    }
+
+    private static func defaultDateText() -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd"
+        return formatter.string(from: Date())
+    }
+
+    private static func parseDate(_ text: String) -> Date? {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd"
+        return formatter.date(from: text.trimmingCharacters(in: .whitespacesAndNewlines))
+    }
 }
 
 final class SettingsWindowController: NSWindowController, NSWindowDelegate {
@@ -1600,6 +1800,24 @@ final class OneFPSRecorder: NSObject {
         let filename = "\(monthDayString(from: date))_\(RecorderSettings.recordingName).mp4"
         return dailyDirectory(for: date)
             .appendingPathComponent(filename)
+    }
+
+    private static func existingDailyVideoURL(for date: Date = Date()) -> URL {
+        let directory = dailyDirectory(for: date)
+        let monthDay = monthDayString(from: date)
+        if let files = try? FileManager.default.contentsOfDirectory(
+            at: directory,
+            includingPropertiesForKeys: [.isRegularFileKey],
+            options: [.skipsHiddenFiles]
+        ),
+           let videoURL = files
+            .filter({ $0.pathExtension.lowercased() == "mp4" })
+            .filter({ $0.deletingPathExtension().lastPathComponent.hasPrefix("\(monthDay)_") })
+            .sorted(by: { $0.lastPathComponent < $1.lastPathComponent })
+            .first {
+            return videoURL
+        }
+        return dailyOutputURL(for: date)
     }
 
     static func renameExistingRecordings(from oldName: String, to newName: String) {
@@ -2587,6 +2805,102 @@ final class OneFPSRecorder: NSObject {
         return (score.seconds, score.earnedYen)
     }
 
+    static func submitReport(_ form: ReportSubmissionForm) throws -> ReportSubmissionResult {
+        _ = syncDerivedLogs(for: form.date)
+        let videoURL = existingDailyVideoURL(for: form.date)
+        guard FileManager.default.fileExists(atPath: videoURL.path) else {
+            throw NSError(
+                domain: "OneFPSRecorder",
+                code: 1001,
+                userInfo: [NSLocalizedDescriptionKey: "指定日の動画が見つかりません: \(videoURL.path)"]
+            )
+        }
+
+        let seconds = dailyWorkSeconds(for: form.date)
+        let hours = max(0, seconds / 3600)
+        let month = monthString(from: form.date)
+        let day = dayString(from: form.date)
+        let monthDay = monthDayString(from: form.date)
+        let submissionDirectory = monthlyDirectory(for: form.date)
+            .appendingPathComponent("提出", isDirectory: true)
+            .appendingPathComponent(monthDay, isDirectory: true)
+        try FileManager.default.createDirectory(at: submissionDirectory, withIntermediateDirectories: true)
+
+        let submittedVideoURL = submissionDirectory.appendingPathComponent(videoURL.lastPathComponent)
+        if FileManager.default.fileExists(atPath: submittedVideoURL.path) {
+            try FileManager.default.removeItem(at: submittedVideoURL)
+        }
+        try FileManager.default.copyItem(at: videoURL, to: submittedVideoURL)
+
+        let reportURL = monthlyDirectory(for: form.date).appendingPathComponent("業務報告-\(month).md")
+        try upsertReportEntry(
+            form: form,
+            reportURL: reportURL,
+            submittedVideoURL: submittedVideoURL,
+            hours: hours,
+            day: day
+        )
+
+        return ReportSubmissionResult(reportURL: reportURL, submittedVideoURL: submittedVideoURL, hours: hours)
+    }
+
+    private static func upsertReportEntry(
+        form: ReportSubmissionForm,
+        reportURL: URL,
+        submittedVideoURL: URL,
+        hours: Int,
+        day: String
+    ) throws {
+        let markerStart = "<!-- OneFPSReport:\(day) -->"
+        let markerEnd = "<!-- /OneFPSReport:\(day) -->"
+        let titleDate = shortDateString(from: form.date)
+        let videoText = form.videoLink.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            ? submittedVideoURL.lastPathComponent
+            : form.videoLink.trimmingCharacters(in: .whitespacesAndNewlines)
+        let entry = """
+        \(markerStart)
+        ## \(titleDate)
+
+        | 項目 | 入力欄 | 備考欄 |
+        | --- | --- | --- |
+        | 担当者 | \(markdownCell(form.reporter)) |  |
+        | 日付 | \(titleDate) |  |
+        | 業務時間 | \(hours)h | 切り捨て1時間単位 |
+        | 業務プラン | \(markdownCell(form.workPlan)) |  |
+        | 業務内容 | \(markdownCell(form.workContent)) |  |
+        | 業務動画リンク | \(markdownCell(videoText)) | 提出動画: \(markdownCell(submittedVideoURL.lastPathComponent)) |
+        | 次回までのTask | \(markdownCell(form.nextTask)) |  |
+        | 業務は順調ですか？ | \(markdownCell(form.status)) |  |
+        | Visitasへのメッセージ | \(markdownCell(form.message)) |  |
+
+        \(markerEnd)
+        """
+
+        try FileManager.default.createDirectory(at: reportURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+        let existing = (try? String(contentsOf: reportURL, encoding: .utf8)) ?? "# 業務報告 \(monthString(from: form.date))\n\n"
+        let updated: String
+        if let startRange = existing.range(of: markerStart),
+           let endRange = existing.range(of: markerEnd, range: startRange.upperBound..<existing.endIndex) {
+            updated = existing.replacingCharacters(in: startRange.lowerBound..<endRange.upperBound, with: entry)
+        } else {
+            updated = existing.trimmingCharacters(in: .newlines) + "\n\n" + entry + "\n"
+        }
+        try updated.write(to: reportURL, atomically: true, encoding: .utf8)
+    }
+
+    private static func markdownCell(_ text: String) -> String {
+        let cleaned = text.trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacingOccurrences(of: "\n", with: "<br>")
+            .replacingOccurrences(of: "|", with: "\\|")
+        return cleaned.isEmpty ? "-" : cleaned
+    }
+
+    private static func shortDateString(from date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "M/d"
+        return formatter.string(from: date)
+    }
+
     private static func monthlyScoreValues(
         for date: Date,
         rows: [String],
@@ -2755,6 +3069,33 @@ if CommandLine.arguments.count >= 3, CommandLine.arguments[1] == "--command" {
         try? Data(line.utf8).write(to: commandFile)
     }
     Thread.sleep(forTimeInterval: 0.6)
+} else if CommandLine.arguments.count >= 3, CommandLine.arguments[1] == "--submit-report-date" {
+    let formatter = DateFormatter()
+    formatter.dateFormat = "yyyy-MM-dd"
+    guard let date = formatter.date(from: CommandLine.arguments[2]) else {
+        fputs("日付は yyyy-MM-dd で指定してください。\n", stderr)
+        exit(2)
+    }
+    let form = ReportSubmissionForm(
+        date: date,
+        reporter: RecorderSettings.reporterName,
+        workPlan: "Visitasの開発",
+        workContent: CommandLine.arguments.count >= 4 ? CommandLine.arguments[3] : "業務内容未入力",
+        nextTask: CommandLine.arguments.count >= 5 ? CommandLine.arguments[4] : "次回Task未入力",
+        status: "順調",
+        message: "",
+        videoLink: "",
+        driveFolderURL: RecorderSettings.driveFolderURL
+    )
+    do {
+        let result = try OneFPSRecorder.submitReport(form)
+        print("report=\(result.reportURL.path)")
+        print("video=\(result.submittedVideoURL.path)")
+        print("hours=\(result.hours)")
+    } catch {
+        fputs("\(error.localizedDescription)\n", stderr)
+        exit(1)
+    }
 } else {
     let app = NSApplication.shared
     let delegate = AppDelegate()
