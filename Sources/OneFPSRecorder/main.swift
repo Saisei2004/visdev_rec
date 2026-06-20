@@ -19,6 +19,11 @@ enum RecorderSettings {
     private static let stopMessageIndexKey = "stopMessageIndex"
     private static let reporterNameKey = "reporterName"
     private static let driveFolderURLKey = "driveFolderURL"
+    private static let defaultWorkPlanKey = "defaultWorkPlan"
+    private static let defaultWorkContentKey = "defaultWorkContent"
+    private static let defaultNextTaskKey = "defaultNextTask"
+    private static let defaultReportStatusKey = "defaultReportStatus"
+    private static let defaultReportMessageKey = "defaultReportMessage"
     private static let defaultDriveFolderURL = "https://drive.google.com/drive/folders/1y9iHjlTsFiVj4EoWFl6bPFPFXXM3Dtc2"
 
     static var recordingName: String {
@@ -166,6 +171,38 @@ enum RecorderSettings {
             return saved.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? defaultDriveFolderURL : saved
         }
         set { defaults.set(newValue.trimmingCharacters(in: .whitespacesAndNewlines), forKey: driveFolderURLKey) }
+    }
+
+    static var defaultWorkPlan: String {
+        get { savedText(forKey: defaultWorkPlanKey, fallback: "Visitasの開発") }
+        set { defaults.set(newValue.trimmingCharacters(in: .whitespacesAndNewlines), forKey: defaultWorkPlanKey) }
+    }
+
+    static var defaultWorkContent: String {
+        get { savedText(forKey: defaultWorkContentKey, fallback: "") }
+        set { defaults.set(newValue.trimmingCharacters(in: .whitespacesAndNewlines), forKey: defaultWorkContentKey) }
+    }
+
+    static var defaultNextTask: String {
+        get { savedText(forKey: defaultNextTaskKey, fallback: "") }
+        set { defaults.set(newValue.trimmingCharacters(in: .whitespacesAndNewlines), forKey: defaultNextTaskKey) }
+    }
+
+    static var defaultReportStatus: String {
+        get { savedText(forKey: defaultReportStatusKey, fallback: "順調") }
+        set { defaults.set(newValue.trimmingCharacters(in: .whitespacesAndNewlines), forKey: defaultReportStatusKey) }
+    }
+
+    static var defaultReportMessage: String {
+        get { savedText(forKey: defaultReportMessageKey, fallback: "") }
+        set { defaults.set(newValue.trimmingCharacters(in: .whitespacesAndNewlines), forKey: defaultReportMessageKey) }
+    }
+
+    private static func savedText(forKey key: String, fallback: String) -> String {
+        defaults.synchronize()
+        let saved = defaults.string(forKey: key) ?? fallback
+        let trimmed = saved.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? fallback : trimmed
     }
 
     private static func nextIndex(forKey key: String, modulo: Int) -> Int {
@@ -560,6 +597,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         reportWindowController = ReportSubmissionWindowController { [weak self] form in
             RecorderSettings.reporterName = form.reporter
             RecorderSettings.driveFolderURL = form.driveFolderURL
+            RecorderSettings.defaultWorkPlan = form.workPlan
+            RecorderSettings.defaultWorkContent = form.workContent
+            RecorderSettings.defaultNextTask = form.nextTask
+            RecorderSettings.defaultReportStatus = form.status
+            RecorderSettings.defaultReportMessage = form.message
             do {
                 let result = try OneFPSRecorder.submitReport(form)
                 self?.showAlert("業務報告を更新しました。\n業務時間: \(result.hours)h\n\n報告: \(result.reportURL.path)\n提出動画: \(result.submittedVideoURL.path)")
@@ -796,11 +838,11 @@ enum RecorderState {
 final class ReportSubmissionWindowController: NSWindowController, NSWindowDelegate {
     private let dateField = NSTextField(string: ReportSubmissionWindowController.defaultDateText())
     private let reporterField = NSTextField(string: RecorderSettings.reporterName)
-    private let workPlanField = NSTextField(string: "Visitasの開発")
-    private let workContentField = NSTextField(string: "")
-    private let nextTaskField = NSTextField(string: "")
-    private let statusField = NSTextField(string: "順調")
-    private let messageField = NSTextField(string: "")
+    private let workPlanField = NSTextField(string: RecorderSettings.defaultWorkPlan)
+    private let workContentField = NSTextField(string: RecorderSettings.defaultWorkContent)
+    private let nextTaskField = NSTextField(string: RecorderSettings.defaultNextTask)
+    private let statusField = NSTextField(string: RecorderSettings.defaultReportStatus)
+    private let messageField = NSTextField(string: RecorderSettings.defaultReportMessage)
     private let videoLinkField = NSTextField(string: "")
     private let onSubmit: (ReportSubmissionForm) -> Void
 
@@ -831,6 +873,11 @@ final class ReportSubmissionWindowController: NSWindowController, NSWindowDelega
     override func showWindow(_ sender: Any?) {
         dateField.stringValue = Self.defaultDateText()
         reporterField.stringValue = RecorderSettings.reporterName
+        workPlanField.stringValue = RecorderSettings.defaultWorkPlan
+        workContentField.stringValue = RecorderSettings.defaultWorkContent
+        nextTaskField.stringValue = RecorderSettings.defaultNextTask
+        statusField.stringValue = RecorderSettings.defaultReportStatus
+        messageField.stringValue = RecorderSettings.defaultReportMessage
         super.showWindow(sender)
         window?.makeKeyAndOrderFront(nil)
         window?.orderFrontRegardless()
@@ -3084,11 +3131,11 @@ if CommandLine.arguments.count >= 3, CommandLine.arguments[1] == "--command" {
     let form = ReportSubmissionForm(
         date: date,
         reporter: RecorderSettings.reporterName,
-        workPlan: "Visitasの開発",
-        workContent: CommandLine.arguments.count >= 4 ? CommandLine.arguments[3] : "業務内容未入力",
-        nextTask: CommandLine.arguments.count >= 5 ? CommandLine.arguments[4] : "次回Task未入力",
-        status: "順調",
-        message: "",
+        workPlan: RecorderSettings.defaultWorkPlan,
+        workContent: CommandLine.arguments.count >= 4 ? CommandLine.arguments[3] : RecorderSettings.defaultWorkContent,
+        nextTask: CommandLine.arguments.count >= 5 ? CommandLine.arguments[4] : RecorderSettings.defaultNextTask,
+        status: RecorderSettings.defaultReportStatus,
+        message: RecorderSettings.defaultReportMessage,
         videoLink: "",
         driveFolderURL: RecorderSettings.driveFolderURL
     )

@@ -13,6 +13,14 @@ enum SharedSettings {
     private static let pauseOnSleepKey = "pauseOnSleep"
     private static let pauseOnMouseIdleKey = "pauseOnMouseIdle"
     private static let mouseIdleMinutesKey = "mouseIdleMinutes"
+    private static let reporterNameKey = "reporterName"
+    private static let driveFolderURLKey = "driveFolderURL"
+    private static let defaultWorkPlanKey = "defaultWorkPlan"
+    private static let defaultWorkContentKey = "defaultWorkContent"
+    private static let defaultNextTaskKey = "defaultNextTask"
+    private static let defaultReportStatusKey = "defaultReportStatus"
+    private static let defaultReportMessageKey = "defaultReportMessage"
+    private static let defaultDriveFolderURL = "https://drive.google.com/drive/folders/1y9iHjlTsFiVj4EoWFl6bPFPFXXM3Dtc2"
 
     static var recordingName: String {
         get {
@@ -118,6 +126,51 @@ enum SharedSettings {
         set { defaults.set(min(max(1, newValue), 180), forKey: mouseIdleMinutesKey) }
     }
 
+    static var reporterName: String {
+        get { savedText(forKey: reporterNameKey, fallback: "馬場幸成") }
+        set { defaults.set(newValue.trimmingCharacters(in: .whitespacesAndNewlines), forKey: reporterNameKey) }
+    }
+
+    static var driveFolderURL: String {
+        get {
+            let saved = defaults.string(forKey: driveFolderURLKey) ?? defaultDriveFolderURL
+            let trimmed = saved.trimmingCharacters(in: .whitespacesAndNewlines)
+            return trimmed.isEmpty ? defaultDriveFolderURL : trimmed
+        }
+        set { defaults.set(newValue.trimmingCharacters(in: .whitespacesAndNewlines), forKey: driveFolderURLKey) }
+    }
+
+    static var defaultWorkPlan: String {
+        get { savedText(forKey: defaultWorkPlanKey, fallback: "Visitasの開発") }
+        set { defaults.set(newValue.trimmingCharacters(in: .whitespacesAndNewlines), forKey: defaultWorkPlanKey) }
+    }
+
+    static var defaultWorkContent: String {
+        get { savedText(forKey: defaultWorkContentKey, fallback: "") }
+        set { defaults.set(newValue.trimmingCharacters(in: .whitespacesAndNewlines), forKey: defaultWorkContentKey) }
+    }
+
+    static var defaultNextTask: String {
+        get { savedText(forKey: defaultNextTaskKey, fallback: "") }
+        set { defaults.set(newValue.trimmingCharacters(in: .whitespacesAndNewlines), forKey: defaultNextTaskKey) }
+    }
+
+    static var defaultReportStatus: String {
+        get { savedText(forKey: defaultReportStatusKey, fallback: "順調") }
+        set { defaults.set(newValue.trimmingCharacters(in: .whitespacesAndNewlines), forKey: defaultReportStatusKey) }
+    }
+
+    static var defaultReportMessage: String {
+        get { savedText(forKey: defaultReportMessageKey, fallback: "") }
+        set { defaults.set(newValue.trimmingCharacters(in: .whitespacesAndNewlines), forKey: defaultReportMessageKey) }
+    }
+
+    private static func savedText(forKey key: String, fallback: String) -> String {
+        let saved = defaults.string(forKey: key) ?? fallback
+        let trimmed = saved.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? fallback : trimmed
+    }
+
     static func sanitizedRecordingName(_ name: String) -> String {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
         let fallback = trimmed.isEmpty ? "録画" : trimmed
@@ -130,8 +183,107 @@ enum SharedSettings {
     }
 }
 
+final class ReportDefaultsWindowController: NSWindowController {
+    private let reporterField = NSTextField(string: SharedSettings.reporterName)
+    private let planField = NSTextField(string: SharedSettings.defaultWorkPlan)
+    private let contentField = NSTextField(string: SharedSettings.defaultWorkContent)
+    private let nextTaskField = NSTextField(string: SharedSettings.defaultNextTask)
+    private let statusField = NSTextField(string: SharedSettings.defaultReportStatus)
+    private let messageField = NSTextField(string: SharedSettings.defaultReportMessage)
+    private let driveURLField = NSTextField(string: SharedSettings.driveFolderURL)
+
+    init() {
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 620, height: 380),
+            styleMask: [.titled, .closable],
+            backing: .buffered,
+            defer: false
+        )
+        window.title = "業務報告 初期値"
+        window.isReleasedWhenClosed = false
+        window.center()
+        super.init(window: window)
+        buildUI()
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    override func showWindow(_ sender: Any?) {
+        reporterField.stringValue = SharedSettings.reporterName
+        planField.stringValue = SharedSettings.defaultWorkPlan
+        contentField.stringValue = SharedSettings.defaultWorkContent
+        nextTaskField.stringValue = SharedSettings.defaultNextTask
+        statusField.stringValue = SharedSettings.defaultReportStatus
+        messageField.stringValue = SharedSettings.defaultReportMessage
+        driveURLField.stringValue = SharedSettings.driveFolderURL
+        super.showWindow(sender)
+        window?.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+    }
+
+    private func buildUI() {
+        guard let contentView = window?.contentView else { return }
+        let rows: [(String, NSTextField, String)] = [
+            ("担当者", reporterField, ""),
+            ("業務プラン", planField, ""),
+            ("業務内容", contentField, "空でも可"),
+            ("次回までのTask", nextTaskField, "空でも可"),
+            ("業務は順調ですか？", statusField, ""),
+            ("Visitasへのメッセージ", messageField, "空でも可"),
+            ("DriveフォルダURL", driveURLField, "")
+        ]
+
+        var y = 306
+        for (label, field, placeholder) in rows {
+            let labelView = NSTextField(labelWithString: label)
+            labelView.font = NSFont.systemFont(ofSize: 12, weight: .semibold)
+            labelView.frame = NSRect(x: 28, y: y + 6, width: 130, height: 20)
+            field.frame = NSRect(x: 166, y: y, width: 420, height: 28)
+            field.placeholderString = placeholder
+            contentView.addSubview(labelView)
+            contentView.addSubview(field)
+            y -= 38
+        }
+
+        let hint = NSTextField(labelWithString: "ここで保存した値が、業務報告提出画面の初期値になります。提出画面で変更して提出した値も次回初期値になります。")
+        hint.font = NSFont.systemFont(ofSize: 11)
+        hint.textColor = .secondaryLabelColor
+        hint.frame = NSRect(x: 28, y: 54, width: 560, height: 18)
+        contentView.addSubview(hint)
+
+        let cancelButton = NSButton(title: "閉じる", target: self, action: #selector(closePressed))
+        cancelButton.bezelStyle = .rounded
+        cancelButton.frame = NSRect(x: 410, y: 18, width: 82, height: 30)
+        contentView.addSubview(cancelButton)
+
+        let saveButton = NSButton(title: "保存", target: self, action: #selector(savePressed))
+        saveButton.bezelStyle = .rounded
+        saveButton.keyEquivalent = "\r"
+        saveButton.frame = NSRect(x: 504, y: 18, width: 82, height: 30)
+        contentView.addSubview(saveButton)
+    }
+
+    @objc private func savePressed() {
+        SharedSettings.reporterName = reporterField.stringValue
+        SharedSettings.defaultWorkPlan = planField.stringValue
+        SharedSettings.defaultWorkContent = contentField.stringValue
+        SharedSettings.defaultNextTask = nextTaskField.stringValue
+        SharedSettings.defaultReportStatus = statusField.stringValue
+        SharedSettings.defaultReportMessage = messageField.stringValue
+        SharedSettings.driveFolderURL = driveURLField.stringValue
+        close()
+    }
+
+    @objc private func closePressed() {
+        close()
+    }
+}
+
 final class SettingsDelegate: NSObject, NSApplicationDelegate {
     private var window: NSWindow!
+    private var reportDefaultsWindow: ReportDefaultsWindowController?
     private let nameField = NSTextField(string: SharedSettings.recordingName)
     private let overlayCheckbox = NSButton(checkboxWithTitle: "録画中パネルを表示する", target: nil, action: nil)
     private let pauseOverlayCheckbox = NSButton(checkboxWithTitle: "一時停止パネルを表示する", target: nil, action: nil)
@@ -143,6 +295,7 @@ final class SettingsDelegate: NSObject, NSApplicationDelegate {
     private let pauseOnSleepCheckbox = NSButton(checkboxWithTitle: "スリープ時に一時停止する", target: nil, action: nil)
     private let pauseOnMouseIdleCheckbox = NSButton(checkboxWithTitle: "マウス無操作で一時停止する", target: nil, action: nil)
     private let mouseIdleMinutesField = NSTextField(string: "\(SharedSettings.mouseIdleMinutes)")
+    private let reportDefaultsButton = NSButton(title: "業務報告初期値...", target: nil, action: nil)
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.regular)
@@ -235,6 +388,11 @@ final class SettingsDelegate: NSObject, NSApplicationDelegate {
         mouseIdleMinutesField.frame = NSRect(x: 390, y: 78, width: 80, height: 28)
         mouseIdleMinutesField.placeholderString = "5"
 
+        reportDefaultsButton.target = self
+        reportDefaultsButton.action = #selector(openReportDefaults)
+        reportDefaultsButton.bezelStyle = .rounded
+        reportDefaultsButton.frame = NSRect(x: 30, y: 22, width: 150, height: 30)
+
         let closeButton = NSButton(title: "閉じる", target: self, action: #selector(closePressed))
         closeButton.bezelStyle = .rounded
         closeButton.frame = NSRect(x: 308, y: 22, width: 76, height: 30)
@@ -263,6 +421,7 @@ final class SettingsDelegate: NSObject, NSApplicationDelegate {
         content.addSubview(pauseOnMouseIdleCheckbox)
         content.addSubview(idleMinutesLabel)
         content.addSubview(mouseIdleMinutesField)
+        content.addSubview(reportDefaultsButton)
         content.addSubview(closeButton)
         content.addSubview(saveButton)
     }
@@ -287,6 +446,11 @@ final class SettingsDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func closePressed() {
         NSApp.terminate(nil)
+    }
+
+    @objc private func openReportDefaults() {
+        reportDefaultsWindow = ReportDefaultsWindowController()
+        reportDefaultsWindow?.showWindow(nil)
     }
 
     @objc private func resetMonthlyScorePressed() {
