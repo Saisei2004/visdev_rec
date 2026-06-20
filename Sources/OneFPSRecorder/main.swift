@@ -2932,8 +2932,68 @@ final class OneFPSRecorder: NSObject {
             hours: hours,
             day: day
         )
+        try syncGoogleReportIfPossible(
+            form: form,
+            entriesURL: reportDataURL,
+            submittedVideoURL: submittedVideoURL
+        )
 
         return ReportSubmissionResult(reportURL: docxReportURL, submittedVideoURL: submittedVideoURL, hours: hours)
+    }
+
+    private static func syncGoogleReportIfPossible(
+        form: ReportSubmissionForm,
+        entriesURL: URL,
+        submittedVideoURL: URL
+    ) throws {
+        let folderURL = form.driveFolderURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !folderURL.isEmpty else { return }
+        let scriptURL = try googleReportSyncScriptURL()
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/python3")
+        process.arguments = [
+            scriptURL.path,
+            "--folder-url", folderURL,
+            "--entries-json", entriesURL.path,
+            "--video", submittedVideoURL.path
+        ]
+        let pipe = Pipe()
+        process.standardError = pipe
+        process.standardOutput = pipe
+        try process.run()
+        process.waitUntilExit()
+        guard process.terminationStatus == 0 else {
+            let data = pipe.fileHandleForReading.readDataToEndOfFile()
+            let output = String(data: data, encoding: .utf8) ?? "詳細不明"
+            throw NSError(
+                domain: "OneFPSRecorder",
+                code: 1004,
+                userInfo: [NSLocalizedDescriptionKey: "Drive上の報告書更新に失敗しました。ローカル保存は完了しています。\n\(output)"]
+            )
+        }
+    }
+
+    private static func googleReportSyncScriptURL() throws -> URL {
+        let candidates = [
+            Bundle.main.resourceURL?.appendingPathComponent("sync_google_report.py"),
+            URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
+                .appendingPathComponent("scripts")
+                .appendingPathComponent("sync_google_report.py"),
+            URL(fileURLWithPath: #filePath)
+                .deletingLastPathComponent()
+                .deletingLastPathComponent()
+                .deletingLastPathComponent()
+                .appendingPathComponent("scripts")
+                .appendingPathComponent("sync_google_report.py")
+        ].compactMap { $0 }
+        if let found = candidates.first(where: { FileManager.default.fileExists(atPath: $0.path) }) {
+            return found
+        }
+        throw NSError(
+            domain: "OneFPSRecorder",
+            code: 1005,
+            userInfo: [NSLocalizedDescriptionKey: "Drive同期スクリプトが見つかりません。再インストールしてください。"]
+        )
     }
 
     private static func upsertDocxReportEntry(
