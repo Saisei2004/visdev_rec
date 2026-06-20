@@ -20,7 +20,8 @@ enum SharedSettings {
     private static let defaultNextTaskKey = "defaultNextTask"
     private static let defaultReportStatusKey = "defaultReportStatus"
     private static let defaultReportMessageKey = "defaultReportMessage"
-    private static let defaultDriveFolderURL = "https://drive.google.com/drive/folders/1y9iHjlTsFiVj4EoWFl6bPFPFXXM3Dtc2"
+    private static let reportTemplatePathKey = "reportTemplatePath"
+    private static let defaultDriveFolderURL = "https://drive.google.com/drive/folders/1W-Vc69ELQ-gtul7VVtQCs7mLMLk2LbIH"
 
     static var recordingName: String {
         get {
@@ -165,6 +166,19 @@ enum SharedSettings {
         set { defaults.set(newValue.trimmingCharacters(in: .whitespacesAndNewlines), forKey: defaultReportMessageKey) }
     }
 
+    static var reportTemplatePath: String {
+        get {
+            let fallback = FileManager.default.homeDirectoryForCurrentUser
+                .appendingPathComponent("Downloads")
+                .appendingPathComponent("報告書（6月分）.docx")
+                .path
+            let saved = defaults.string(forKey: reportTemplatePathKey) ?? fallback
+            let trimmed = saved.trimmingCharacters(in: .whitespacesAndNewlines)
+            return trimmed.isEmpty ? fallback : trimmed
+        }
+        set { defaults.set(newValue.trimmingCharacters(in: .whitespacesAndNewlines), forKey: reportTemplatePathKey) }
+    }
+
     private static func savedText(forKey key: String, fallback: String) -> String {
         let saved = defaults.string(forKey: key) ?? fallback
         let trimmed = saved.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -191,10 +205,11 @@ final class ReportDefaultsWindowController: NSWindowController {
     private let statusField = NSTextField(string: SharedSettings.defaultReportStatus)
     private let messageField = NSTextField(string: SharedSettings.defaultReportMessage)
     private let driveURLField = NSTextField(string: SharedSettings.driveFolderURL)
+    private let templatePathField = NSTextField(string: SharedSettings.reportTemplatePath)
 
     init() {
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 620, height: 380),
+            contentRect: NSRect(x: 0, y: 0, width: 620, height: 420),
             styleMask: [.titled, .closable],
             backing: .buffered,
             defer: false
@@ -218,6 +233,7 @@ final class ReportDefaultsWindowController: NSWindowController {
         statusField.stringValue = SharedSettings.defaultReportStatus
         messageField.stringValue = SharedSettings.defaultReportMessage
         driveURLField.stringValue = SharedSettings.driveFolderURL
+        templatePathField.stringValue = SharedSettings.reportTemplatePath
         super.showWindow(sender)
         window?.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
@@ -232,10 +248,11 @@ final class ReportDefaultsWindowController: NSWindowController {
             ("次回までのTask", nextTaskField, "空でも可"),
             ("業務は順調ですか？", statusField, ""),
             ("Visitasへのメッセージ", messageField, "空でも可"),
-            ("DriveフォルダURL", driveURLField, "")
+            ("DriveフォルダURL", driveURLField, ""),
+            ("報告書テンプレート", templatePathField, "~/Downloads/報告書（6月分）.docx")
         ]
 
-        var y = 306
+        var y = 344
         for (label, field, placeholder) in rows {
             let labelView = NSTextField(labelWithString: label)
             labelView.font = NSFont.systemFont(ofSize: 12, weight: .semibold)
@@ -273,6 +290,7 @@ final class ReportDefaultsWindowController: NSWindowController {
         SharedSettings.defaultReportStatus = statusField.stringValue
         SharedSettings.defaultReportMessage = messageField.stringValue
         SharedSettings.driveFolderURL = driveURLField.stringValue
+        SharedSettings.reportTemplatePath = templatePathField.stringValue
         close()
     }
 

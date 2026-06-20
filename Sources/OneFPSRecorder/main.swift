@@ -24,7 +24,8 @@ enum RecorderSettings {
     private static let defaultNextTaskKey = "defaultNextTask"
     private static let defaultReportStatusKey = "defaultReportStatus"
     private static let defaultReportMessageKey = "defaultReportMessage"
-    private static let defaultDriveFolderURL = "https://drive.google.com/drive/folders/1y9iHjlTsFiVj4EoWFl6bPFPFXXM3Dtc2"
+    private static let reportTemplatePathKey = "reportTemplatePath"
+    private static let defaultDriveFolderURL = "https://drive.google.com/drive/folders/1W-Vc69ELQ-gtul7VVtQCs7mLMLk2LbIH"
 
     static var recordingName: String {
         get {
@@ -198,6 +199,20 @@ enum RecorderSettings {
         set { defaults.set(newValue.trimmingCharacters(in: .whitespacesAndNewlines), forKey: defaultReportMessageKey) }
     }
 
+    static var reportTemplatePath: String {
+        get {
+            defaults.synchronize()
+            let fallback = FileManager.default.homeDirectoryForCurrentUser
+                .appendingPathComponent("Downloads")
+                .appendingPathComponent("報告書（6月分）.docx")
+                .path
+            let saved = defaults.string(forKey: reportTemplatePathKey) ?? fallback
+            let trimmed = saved.trimmingCharacters(in: .whitespacesAndNewlines)
+            return trimmed.isEmpty ? fallback : trimmed
+        }
+        set { defaults.set(newValue.trimmingCharacters(in: .whitespacesAndNewlines), forKey: reportTemplatePathKey) }
+    }
+
     private static func savedText(forKey key: String, fallback: String) -> String {
         defaults.synchronize()
         let saved = defaults.string(forKey: key) ?? fallback
@@ -239,6 +254,20 @@ struct ReportSubmissionResult {
     var reportURL: URL
     var submittedVideoURL: URL
     var hours: Int
+}
+
+struct StoredReportEntry: Codable {
+    var date: String
+    var displayDate: String
+    var reporter: String
+    var hours: Int
+    var workPlan: String
+    var workContent: String
+    var videoLink: String
+    var videoFileName: String
+    var nextTask: String
+    var status: String
+    var message: String
 }
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
@@ -2893,7 +2922,110 @@ final class OneFPSRecorder: NSObject {
             day: day
         )
 
-        return ReportSubmissionResult(reportURL: reportURL, submittedVideoURL: submittedVideoURL, hours: hours)
+        let docxReportURL = monthlyDirectory(for: form.date).appendingPathComponent("業務報告-\(month).docx")
+        let reportDataURL = monthlyDirectory(for: form.date).appendingPathComponent("業務報告データ-\(month).json")
+        try upsertDocxReportEntry(
+            form: form,
+            entriesURL: reportDataURL,
+            docxReportURL: docxReportURL,
+            submittedVideoURL: submittedVideoURL,
+            hours: hours,
+            day: day
+        )
+
+        return ReportSubmissionResult(reportURL: docxReportURL, submittedVideoURL: submittedVideoURL, hours: hours)
+    }
+
+    private static func upsertDocxReportEntry(
+        form: ReportSubmissionForm,
+        entriesURL: URL,
+        docxReportURL: URL,
+        submittedVideoURL: URL,
+        hours: Int,
+        day: String
+    ) throws {
+        try FileManager.default.createDirectory(at: entriesURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+        var entries: [StoredReportEntry] = []
+        if let data = try? Data(contentsOf: entriesURL),
+           let decoded = try? JSONDecoder().decode([StoredReportEntry].self, from: data) {
+            entries = decoded
+        }
+        let videoText = form.videoLink.trimmingCharacters(in: .whitespacesAndNewlines)
+        let entry = StoredReportEntry(
+            date: day,
+            displayDate: shortDateString(from: form.date),
+            reporter: form.reporter.trimmingCharacters(in: .whitespacesAndNewlines),
+            hours: hours,
+            workPlan: form.workPlan.trimmingCharacters(in: .whitespacesAndNewlines),
+            workContent: form.workContent.trimmingCharacters(in: .whitespacesAndNewlines),
+            videoLink: videoText.isEmpty ? submittedVideoURL.lastPathComponent : videoText,
+            videoFileName: submittedVideoURL.lastPathComponent,
+            nextTask: form.nextTask.trimmingCharacters(in: .whitespacesAndNewlines),
+            status: form.status.trimmingCharacters(in: .whitespacesAndNewlines),
+            message: form.message.trimmingCharacters(in: .whitespacesAndNewlines)
+        )
+        entries.removeAll { $0.date == day }
+        entries.append(entry)
+        entries.sort { $0.date < $1.date }
+
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        try encoder.encode(entries).write(to: entriesURL, options: .atomic)
+        try regenerateDocxReport(entriesURL: entriesURL, outputURL: docxReportURL)
+    }
+
+    private static func regenerateDocxReport(entriesURL: URL, outputURL: URL) throws {
+        let scriptURL = try reportDocxScriptURL()
+        let templateURL = URL(fileURLWithPath: expandedPath(RecorderSettings.reportTemplatePath))
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/python3")
+        process.arguments = [
+            scriptURL.path,
+            "--template", templateURL.path,
+            "--output", outputURL.path,
+            "--entries-json", entriesURL.path
+        ]
+        let pipe = Pipe()
+        process.standardError = pipe
+        process.standardOutput = pipe
+        try process.run()
+        process.waitUntilExit()
+        guard process.terminationStatus == 0 else {
+            let data = pipe.fileHandleForReading.readDataToEndOfFile()
+            let output = String(data: data, encoding: .utf8) ?? "詳細不明"
+            throw NSError(
+                domain: "OneFPSRecorder",
+                code: 1002,
+                userInfo: [NSLocalizedDescriptionKey: "報告書DOCXの更新に失敗しました: \(output)"]
+            )
+        }
+    }
+
+    private static func reportDocxScriptURL() throws -> URL {
+        let candidates = [
+            Bundle.main.resourceURL?.appendingPathComponent("update_report_docx.py"),
+            URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
+                .appendingPathComponent("scripts")
+                .appendingPathComponent("update_report_docx.py"),
+            URL(fileURLWithPath: #filePath)
+                .deletingLastPathComponent()
+                .deletingLastPathComponent()
+                .deletingLastPathComponent()
+                .appendingPathComponent("scripts")
+                .appendingPathComponent("update_report_docx.py")
+        ].compactMap { $0 }
+        if let found = candidates.first(where: { FileManager.default.fileExists(atPath: $0.path) }) {
+            return found
+        }
+        throw NSError(
+            domain: "OneFPSRecorder",
+            code: 1003,
+            userInfo: [NSLocalizedDescriptionKey: "報告書更新スクリプトが見つかりません。再インストールしてください。"]
+        )
+    }
+
+    private static func expandedPath(_ path: String) -> String {
+        NSString(string: path).expandingTildeInPath
     }
 
     private static func upsertReportEntry(
