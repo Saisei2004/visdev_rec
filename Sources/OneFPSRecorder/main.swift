@@ -2969,6 +2969,7 @@ final class OneFPSRecorder: NSObject {
             scriptURL.path,
             "--folder-url", folderURL,
             "--video-folder-url", videoFolderURL,
+            "--template", expandedPath(RecorderSettings.reportTemplatePath),
             "--entries-json", entriesURL.path,
             "--video", submittedVideoURL.path
         ]
@@ -3120,17 +3121,17 @@ final class OneFPSRecorder: NSObject {
         \(markerStart)
         ## \(titleDate)
 
-        | 項目 | 入力欄 |
-        | --- | --- |
-        | 担当者 | \(markdownCell(form.reporter)) |
-        | 日付 | \(titleDate) |
-        | 業務時間 | \(hours)h |
-        | 業務プラン | \(markdownCell(form.workPlan)) |
-        | 業務内容 | \(markdownCell(form.workContent)) |
-        | 業務動画リンク | \(markdownCell(videoText)) |
-        | 次回までのTask | \(markdownCell(form.nextTask)) |
-        | 業務は順調ですか？ | \(markdownCell(form.status)) |
-        | Visitasへのメッセージ | \(markdownCell(form.message)) |
+        | 項目 | 入力欄 | 備考欄 |
+        | --- | --- | --- |
+        | 担当者 | \(markdownCell(form.reporter)) |  |
+        | 日付 | \(titleDate) |  |
+        | 業務時間 | \(hours)h |  |
+        | 業務プラン | \(markdownCell(form.workPlan)) |  |
+        | 業務内容 | \(markdownCell(form.workContent)) |  |
+        | 業務動画リンク | \(markdownCell(videoText)) |  |
+        | 次回までのTask | \(markdownCell(form.nextTask)) |  |
+        | 業務は順調ですか？ | \(markdownCell(form.status)) |  |
+        | Visitasへのメッセージ | \(markdownCell(form.message)) |  |
 
         \(markerEnd)
         """

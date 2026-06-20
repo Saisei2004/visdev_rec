@@ -247,6 +247,7 @@ def main():
     parser.add_argument("--video-folder-url", default=DEFAULT_VIDEO_FOLDER_URL)
     parser.add_argument("--document-name", default="報告書（6月分）")
     parser.add_argument("--entries-json", required=True)
+    parser.add_argument("--template")
     parser.add_argument("--video")
     parser.add_argument("--output-json")
     args = parser.parse_args()
@@ -277,7 +278,12 @@ def main():
                 args_entries_path.write_text(json.dumps(entries, ensure_ascii=False, indent=2), encoding="utf-8")
                 entries_path = Path(tmp) / "entries-with-video-link.json"
                 entries_path.write_text(json.dumps(entries, ensure_ascii=False, indent=2), encoding="utf-8")
-        export_google_docx(token, document["id"], template_path)
+        if args.template:
+            template_path = Path(args.template).expanduser()
+            if not template_path.exists():
+                raise RuntimeError(f"報告書テンプレートが見つかりません: {template_path}")
+        else:
+            export_google_docx(token, document["id"], template_path)
         regenerate_docx(str(template_path), str(output_path), str(entries_path))
         updated = multipart_upload_update(token, document["id"], output_path)
 
