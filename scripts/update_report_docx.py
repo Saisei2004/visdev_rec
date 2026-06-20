@@ -70,16 +70,16 @@ def table_row(values, bold_first=False):
 def generated_report_table(entry):
     video_link = entry.get("videoLink") or entry.get("videoFileName") or ""
     rows = [
-        ("項目", "入力欄", "備考欄"),
-        ("担当者", entry.get("reporter", ""), ""),
-        ("日付", entry.get("displayDate", ""), ""),
-        ("業務時間", f'{entry.get("hours", 0)}h', "切り捨て1時間単位"),
-        ("業務プラン", entry.get("workPlan", ""), ""),
-        ("業務内容", entry.get("workContent", ""), ""),
-        ("業務動画リンク", video_link, f'提出動画: {entry.get("videoFileName", "")}'),
-        ("次回までのTask", entry.get("nextTask", ""), ""),
-        ("業務は順調ですか？", entry.get("status", ""), ""),
-        ("Visitasへのメッセージ", entry.get("message", ""), ""),
+        ("項目", "入力欄"),
+        ("担当者", entry.get("reporter", "")),
+        ("日付", entry.get("displayDate", "")),
+        ("業務時間", f'{entry.get("hours", 0)}h'),
+        ("業務プラン", entry.get("workPlan", "")),
+        ("業務内容", entry.get("workContent", "")),
+        ("業務動画リンク", video_link),
+        ("次回までのTask", entry.get("nextTask", "")),
+        ("業務は順調ですか？", entry.get("status", "")),
+        ("Visitasへのメッセージ", entry.get("message", "")),
     ]
     borders = (
         '<w:tblPr><w:tblW w:w="0" w:type="auto"/>'
@@ -92,7 +92,7 @@ def generated_report_table(entry):
         '<w:insideV w:val="single" w:sz="8" w:space="0" w:color="000000"/>'
         '</w:tblBorders></w:tblPr>'
     )
-    grid = '<w:tblGrid><w:gridCol w:w="2500"/><w:gridCol w:w="4300"/><w:gridCol w:w="3000"/></w:tblGrid>'
+    grid = '<w:tblGrid><w:gridCol w:w="3000"/><w:gridCol w:w="6800"/></w:tblGrid>'
     return "<w:tbl>" + borders + grid + "".join(table_row(row, bold_first=True) for row in rows) + "</w:tbl>"
 
 
@@ -128,19 +128,33 @@ def set_cell_text(table_element, row_index, col_index, text):
 def fill_template_table(table_element, entry):
     video_link = entry.get("videoLink") or entry.get("videoFileName") or ""
     values = {
-        1: (entry.get("reporter", ""), ""),
-        2: (entry.get("displayDate", ""), ""),
-        3: (f'{entry.get("hours", 0)}h', "切り捨て1時間単位"),
-        4: (entry.get("workPlan", ""), ""),
-        5: (entry.get("workContent", ""), ""),
-        6: (video_link, f'提出動画: {entry.get("videoFileName", "")}'),
-        7: (entry.get("nextTask", ""), ""),
-        8: (entry.get("status", ""), ""),
-        9: (entry.get("message", ""), ""),
+        1: entry.get("reporter", ""),
+        2: entry.get("displayDate", ""),
+        3: f'{entry.get("hours", 0)}h',
+        4: entry.get("workPlan", ""),
+        5: entry.get("workContent", ""),
+        6: video_link,
+        7: entry.get("nextTask", ""),
+        8: entry.get("status", ""),
+        9: entry.get("message", ""),
     }
-    for row_index, (input_text, note_text) in values.items():
+    set_cell_text(table_element, 0, 0, "項目")
+    set_cell_text(table_element, 0, 1, "入力欄")
+    remove_column(table_element, 2)
+    for row_index, input_text in values.items():
         set_cell_text(table_element, row_index, 1, input_text)
-        set_cell_text(table_element, row_index, 2, note_text)
+
+
+def remove_column(table_element, col_index):
+    grid = table_element.find(q("tblGrid"))
+    if grid is not None:
+        cols = grid.findall(q("gridCol"))
+        if col_index < len(cols):
+            grid.remove(cols[col_index])
+    for row in table_element.findall(q("tr")):
+        cells = row.findall(q("tc"))
+        if col_index < len(cells):
+            row.remove(cells[col_index])
 
 
 def page_break_element():

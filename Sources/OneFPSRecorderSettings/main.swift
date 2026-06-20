@@ -15,6 +15,7 @@ enum SharedSettings {
     private static let mouseIdleMinutesKey = "mouseIdleMinutes"
     private static let reporterNameKey = "reporterName"
     private static let driveFolderURLKey = "driveFolderURL"
+    private static let videoDriveFolderURLKey = "videoDriveFolderURL"
     private static let defaultWorkPlanKey = "defaultWorkPlan"
     private static let defaultWorkContentKey = "defaultWorkContent"
     private static let defaultNextTaskKey = "defaultNextTask"
@@ -22,6 +23,7 @@ enum SharedSettings {
     private static let defaultReportMessageKey = "defaultReportMessage"
     private static let reportTemplatePathKey = "reportTemplatePath"
     private static let defaultDriveFolderURL = "https://drive.google.com/drive/folders/1W-Vc69ELQ-gtul7VVtQCs7mLMLk2LbIH"
+    private static let defaultVideoDriveFolderURL = "https://drive.google.com/drive/folders/1NjjboZDYCDLAC_OhhPOBj5PmF3Rs9U_x"
 
     static var recordingName: String {
         get {
@@ -141,6 +143,15 @@ enum SharedSettings {
         set { defaults.set(newValue.trimmingCharacters(in: .whitespacesAndNewlines), forKey: driveFolderURLKey) }
     }
 
+    static var videoDriveFolderURL: String {
+        get {
+            let saved = defaults.string(forKey: videoDriveFolderURLKey) ?? defaultVideoDriveFolderURL
+            let trimmed = saved.trimmingCharacters(in: .whitespacesAndNewlines)
+            return trimmed.isEmpty ? defaultVideoDriveFolderURL : trimmed
+        }
+        set { defaults.set(newValue.trimmingCharacters(in: .whitespacesAndNewlines), forKey: videoDriveFolderURLKey) }
+    }
+
     static var defaultWorkPlan: String {
         get { savedText(forKey: defaultWorkPlanKey, fallback: "Visitasの開発") }
         set { defaults.set(newValue.trimmingCharacters(in: .whitespacesAndNewlines), forKey: defaultWorkPlanKey) }
@@ -205,11 +216,12 @@ final class ReportDefaultsWindowController: NSWindowController {
     private let statusField = NSTextField(string: SharedSettings.defaultReportStatus)
     private let messageField = NSTextField(string: SharedSettings.defaultReportMessage)
     private let driveURLField = NSTextField(string: SharedSettings.driveFolderURL)
+    private let videoDriveURLField = NSTextField(string: SharedSettings.videoDriveFolderURL)
     private let templatePathField = NSTextField(string: SharedSettings.reportTemplatePath)
 
     init() {
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 620, height: 420),
+            contentRect: NSRect(x: 0, y: 0, width: 620, height: 458),
             styleMask: [.titled, .closable],
             backing: .buffered,
             defer: false
@@ -233,6 +245,7 @@ final class ReportDefaultsWindowController: NSWindowController {
         statusField.stringValue = SharedSettings.defaultReportStatus
         messageField.stringValue = SharedSettings.defaultReportMessage
         driveURLField.stringValue = SharedSettings.driveFolderURL
+        videoDriveURLField.stringValue = SharedSettings.videoDriveFolderURL
         templatePathField.stringValue = SharedSettings.reportTemplatePath
         super.showWindow(sender)
         window?.makeKeyAndOrderFront(nil)
@@ -248,11 +261,12 @@ final class ReportDefaultsWindowController: NSWindowController {
             ("次回までのTask", nextTaskField, "空でも可"),
             ("業務は順調ですか？", statusField, ""),
             ("Visitasへのメッセージ", messageField, "空でも可"),
-            ("DriveフォルダURL", driveURLField, ""),
+            ("報告書Driveフォルダ", driveURLField, ""),
+            ("動画Driveフォルダ", videoDriveURLField, ""),
             ("報告書テンプレート", templatePathField, "~/Downloads/報告書（6月分）.docx")
         ]
 
-        var y = 344
+        var y = 382
         for (label, field, placeholder) in rows {
             let labelView = NSTextField(labelWithString: label)
             labelView.font = NSFont.systemFont(ofSize: 12, weight: .semibold)
@@ -290,6 +304,7 @@ final class ReportDefaultsWindowController: NSWindowController {
         SharedSettings.defaultReportStatus = statusField.stringValue
         SharedSettings.defaultReportMessage = messageField.stringValue
         SharedSettings.driveFolderURL = driveURLField.stringValue
+        SharedSettings.videoDriveFolderURL = videoDriveURLField.stringValue
         SharedSettings.reportTemplatePath = templatePathField.stringValue
         close()
     }

@@ -17,6 +17,7 @@ from update_report_docx import regenerate_docx
 
 DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 GOOGLE_DOC_MIME = "application/vnd.google-apps.document"
+DEFAULT_VIDEO_FOLDER_URL = "https://drive.google.com/drive/folders/1NjjboZDYCDLAC_OhhPOBj5PmF3Rs9U_x"
 
 
 def parse_drive_id(value):
@@ -231,9 +232,19 @@ def upload_video(token, folder_id, video_path):
         raise RuntimeError(f"動画アップロードに失敗しました {exc.code}: {detail}") from exc
 
 
+def trash_file(token, file_id):
+    return request_json(
+        "PATCH",
+        f"https://www.googleapis.com/drive/v3/files/{file_id}?supportsAllDrives=true&fields=id,name,trashed",
+        token,
+        payload={"trashed": True},
+    )
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--folder-url", required=True)
+    parser.add_argument("--video-folder-url", default=DEFAULT_VIDEO_FOLDER_URL)
     parser.add_argument("--document-name", default="報告書（6月分）")
     parser.add_argument("--entries-json", required=True)
     parser.add_argument("--video")
@@ -242,8 +253,11 @@ def main():
 
     token = access_token()
     folder_id = parse_drive_id(args.folder_url)
+    video_folder_id = parse_drive_id(args.video_folder_url)
     if not folder_id:
         raise RuntimeError("DriveフォルダIDを取得できませんでした。")
+    if args.video and not video_folder_id:
+        raise RuntimeError("動画DriveフォルダIDを取得できませんでした。")
 
     with tempfile.TemporaryDirectory() as tmp:
         template_path = Path(tmp) / "drive-template.docx"
@@ -252,7 +266,10 @@ def main():
         video_result = None
         entries_path = Path(args.entries_json)
         if args.video:
-            video_result = upload_video(token, folder_id, args.video)
+            video_result = upload_video(token, video_folder_id, args.video)
+            misplaced_video = find_drive_file(token, folder_id, Path(args.video).name)
+            if misplaced_video and misplaced_video.get("id") != video_result.get("id"):
+                trash_file(token, misplaced_video["id"])
             entries = json.loads(entries_path.read_text(encoding="utf-8"))
             if entries:
                 entries[-1]["videoLink"] = video_result.get("webViewLink") or video_result.get("name") or ""

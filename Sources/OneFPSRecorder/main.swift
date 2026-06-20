@@ -19,6 +19,7 @@ enum RecorderSettings {
     private static let stopMessageIndexKey = "stopMessageIndex"
     private static let reporterNameKey = "reporterName"
     private static let driveFolderURLKey = "driveFolderURL"
+    private static let videoDriveFolderURLKey = "videoDriveFolderURL"
     private static let defaultWorkPlanKey = "defaultWorkPlan"
     private static let defaultWorkContentKey = "defaultWorkContent"
     private static let defaultNextTaskKey = "defaultNextTask"
@@ -26,6 +27,7 @@ enum RecorderSettings {
     private static let defaultReportMessageKey = "defaultReportMessage"
     private static let reportTemplatePathKey = "reportTemplatePath"
     private static let defaultDriveFolderURL = "https://drive.google.com/drive/folders/1W-Vc69ELQ-gtul7VVtQCs7mLMLk2LbIH"
+    private static let defaultVideoDriveFolderURL = "https://drive.google.com/drive/folders/1NjjboZDYCDLAC_OhhPOBj5PmF3Rs9U_x"
 
     static var recordingName: String {
         get {
@@ -174,6 +176,15 @@ enum RecorderSettings {
         set { defaults.set(newValue.trimmingCharacters(in: .whitespacesAndNewlines), forKey: driveFolderURLKey) }
     }
 
+    static var videoDriveFolderURL: String {
+        get {
+            defaults.synchronize()
+            let saved = defaults.string(forKey: videoDriveFolderURLKey) ?? defaultVideoDriveFolderURL
+            return saved.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? defaultVideoDriveFolderURL : saved
+        }
+        set { defaults.set(newValue.trimmingCharacters(in: .whitespacesAndNewlines), forKey: videoDriveFolderURLKey) }
+    }
+
     static var defaultWorkPlan: String {
         get { savedText(forKey: defaultWorkPlanKey, fallback: "Visitasの開発") }
         set { defaults.set(newValue.trimmingCharacters(in: .whitespacesAndNewlines), forKey: defaultWorkPlanKey) }
@@ -248,6 +259,7 @@ struct ReportSubmissionForm {
     var message: String
     var videoLink: String
     var driveFolderURL: String
+    var videoDriveFolderURL: String
 }
 
 struct ReportSubmissionResult {
@@ -975,7 +987,8 @@ final class ReportSubmissionWindowController: NSWindowController, NSWindowDelega
             status: statusField.stringValue,
             message: messageField.stringValue,
             videoLink: videoLinkField.stringValue,
-            driveFolderURL: RecorderSettings.driveFolderURL
+            driveFolderURL: RecorderSettings.driveFolderURL,
+            videoDriveFolderURL: RecorderSettings.videoDriveFolderURL
         )
         onSubmit(form)
         close()
@@ -2947,6 +2960,7 @@ final class OneFPSRecorder: NSObject {
         submittedVideoURL: URL
     ) throws {
         let folderURL = form.driveFolderURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        let videoFolderURL = form.videoDriveFolderURL.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !folderURL.isEmpty else { return }
         let scriptURL = try googleReportSyncScriptURL()
         let process = Process()
@@ -2954,6 +2968,7 @@ final class OneFPSRecorder: NSObject {
         process.arguments = [
             scriptURL.path,
             "--folder-url", folderURL,
+            "--video-folder-url", videoFolderURL,
             "--entries-json", entriesURL.path,
             "--video", submittedVideoURL.path
         ]
@@ -3105,17 +3120,17 @@ final class OneFPSRecorder: NSObject {
         \(markerStart)
         ## \(titleDate)
 
-        | 項目 | 入力欄 | 備考欄 |
-        | --- | --- | --- |
-        | 担当者 | \(markdownCell(form.reporter)) |  |
-        | 日付 | \(titleDate) |  |
-        | 業務時間 | \(hours)h | 切り捨て1時間単位 |
-        | 業務プラン | \(markdownCell(form.workPlan)) |  |
-        | 業務内容 | \(markdownCell(form.workContent)) |  |
-        | 業務動画リンク | \(markdownCell(videoText)) | 提出動画: \(markdownCell(submittedVideoURL.lastPathComponent)) |
-        | 次回までのTask | \(markdownCell(form.nextTask)) |  |
-        | 業務は順調ですか？ | \(markdownCell(form.status)) |  |
-        | Visitasへのメッセージ | \(markdownCell(form.message)) |  |
+        | 項目 | 入力欄 |
+        | --- | --- |
+        | 担当者 | \(markdownCell(form.reporter)) |
+        | 日付 | \(titleDate) |
+        | 業務時間 | \(hours)h |
+        | 業務プラン | \(markdownCell(form.workPlan)) |
+        | 業務内容 | \(markdownCell(form.workContent)) |
+        | 業務動画リンク | \(markdownCell(videoText)) |
+        | 次回までのTask | \(markdownCell(form.nextTask)) |
+        | 業務は順調ですか？ | \(markdownCell(form.status)) |
+        | Visitasへのメッセージ | \(markdownCell(form.message)) |
 
         \(markerEnd)
         """
@@ -3329,7 +3344,8 @@ if CommandLine.arguments.count >= 3, CommandLine.arguments[1] == "--command" {
         status: RecorderSettings.defaultReportStatus,
         message: RecorderSettings.defaultReportMessage,
         videoLink: "",
-        driveFolderURL: RecorderSettings.driveFolderURL
+        driveFolderURL: RecorderSettings.driveFolderURL,
+        videoDriveFolderURL: RecorderSettings.videoDriveFolderURL
     )
     do {
         let result = try OneFPSRecorder.submitReport(form)
