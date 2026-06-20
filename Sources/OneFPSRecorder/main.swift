@@ -19,6 +19,7 @@ enum RecorderSettings {
     private static let stopMessageIndexKey = "stopMessageIndex"
     private static let reporterNameKey = "reporterName"
     private static let driveFolderURLKey = "driveFolderURL"
+    private static let defaultDriveFolderURL = "https://drive.google.com/drive/folders/1y9iHjlTsFiVj4EoWFl6bPFPFXXM3Dtc2"
 
     static var recordingName: String {
         get {
@@ -161,7 +162,8 @@ enum RecorderSettings {
     static var driveFolderURL: String {
         get {
             defaults.synchronize()
-            return defaults.string(forKey: driveFolderURLKey) ?? ""
+            let saved = defaults.string(forKey: driveFolderURLKey) ?? defaultDriveFolderURL
+            return saved.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? defaultDriveFolderURL : saved
         }
         set { defaults.set(newValue.trimmingCharacters(in: .whitespacesAndNewlines), forKey: driveFolderURLKey) }
     }
@@ -800,7 +802,6 @@ final class ReportSubmissionWindowController: NSWindowController, NSWindowDelega
     private let statusField = NSTextField(string: "順調")
     private let messageField = NSTextField(string: "")
     private let videoLinkField = NSTextField(string: "")
-    private let driveFolderURLField = NSTextField(string: RecorderSettings.driveFolderURL)
     private let onSubmit: (ReportSubmissionForm) -> Void
 
     init(onSubmit: @escaping (ReportSubmissionForm) -> Void) {
@@ -830,7 +831,6 @@ final class ReportSubmissionWindowController: NSWindowController, NSWindowDelega
     override func showWindow(_ sender: Any?) {
         dateField.stringValue = Self.defaultDateText()
         reporterField.stringValue = RecorderSettings.reporterName
-        driveFolderURLField.stringValue = RecorderSettings.driveFolderURL
         super.showWindow(sender)
         window?.makeKeyAndOrderFront(nil)
         window?.orderFrontRegardless()
@@ -846,8 +846,7 @@ final class ReportSubmissionWindowController: NSWindowController, NSWindowDelega
             ("業務動画リンク", videoLinkField, "Drive共有リンクを取得できたら貼る"),
             ("次回までのTask", nextTaskField, ""),
             ("業務は順調ですか？", statusField, ""),
-            ("Visitasへのメッセージ", messageField, ""),
-            ("DriveフォルダURL", driveFolderURLField, "提出後に開くフォルダ")
+            ("Visitasへのメッセージ", messageField, "")
         ]
 
         var y = 360
@@ -861,6 +860,12 @@ final class ReportSubmissionWindowController: NSWindowController, NSWindowDelega
             contentView.addSubview(field)
             y -= 36
         }
+
+        let destination = NSTextField(labelWithString: "提出先: 松田彩成 Driveフォルダ")
+        destination.font = NSFont.systemFont(ofSize: 11, weight: .semibold)
+        destination.textColor = .secondaryLabelColor
+        destination.frame = NSRect(x: 28, y: 78, width: 560, height: 18)
+        contentView.addSubview(destination)
 
         let hint = NSTextField(labelWithString: "業務時間は録画区間ログから切り捨て1時間単位で入ります。日付を変えると過去日の上書きになります。")
         hint.font = NSFont.systemFont(ofSize: 11)
@@ -894,7 +899,7 @@ final class ReportSubmissionWindowController: NSWindowController, NSWindowDelega
             status: statusField.stringValue,
             message: messageField.stringValue,
             videoLink: videoLinkField.stringValue,
-            driveFolderURL: driveFolderURLField.stringValue
+            driveFolderURL: RecorderSettings.driveFolderURL
         )
         onSubmit(form)
         close()
