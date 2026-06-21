@@ -7,6 +7,7 @@ enum RecorderSettings {
     private static let recordingNameKey = "recordingName"
     private static let showOverlayKey = "showRecordingOverlay"
     private static let showPauseOverlayKey = "showPauseOverlay"
+    private static let showMenuBarStatusKey = "showMenuBarStatus"
     private static let showMonthlyScoreKey = "showMonthlyScore"
     private static let hourlyRateKey = "hourlyRate"
     private static let monthlyGoalKey = "monthlyGoal"
@@ -64,6 +65,17 @@ enum RecorderSettings {
         set {
             defaults.set(newValue, forKey: showPauseOverlayKey)
         }
+    }
+
+    static var showMenuBarStatus: Bool {
+        get {
+            defaults.synchronize()
+            if defaults.object(forKey: showMenuBarStatusKey) == nil {
+                return true
+            }
+            return defaults.bool(forKey: showMenuBarStatusKey)
+        }
+        set { defaults.set(newValue, forKey: showMenuBarStatusKey) }
     }
 
     static var showMonthlyScore: Bool {
@@ -389,7 +401,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         button.attributedTitle = NSAttributedString(string: "")
         switch state {
         case .idle:
-            button.title = isAutomaticallyPaused ? "1FPS 一時停止" : "1FPS"
+            button.title = RecorderSettings.showMenuBarStatus && isAutomaticallyPaused ? "1FPS 一時停止" : "1FPS"
             button.contentTintColor = nil
             statusItem.menu?.item(at: 0)?.title = "録画開始"
             statusItem.menu?.item(at: 0)?.isEnabled = true
@@ -399,7 +411,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 overlay.hide()
             }
         case .idleSaving:
-            button.title = "1FPS 保存中"
+            button.title = RecorderSettings.showMenuBarStatus ? "1FPS 保存中" : "1FPS"
             button.contentTintColor = nil
             statusItem.menu?.item(at: 0)?.title = "録画開始"
             statusItem.menu?.item(at: 0)?.isEnabled = true
@@ -414,7 +426,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let elapsed = Int(Date().timeIntervalSince(startedAt))
             let score = OneFPSRecorder.monthlyScore(includingCurrentStartedAt: startedAt)
             let scoreText = RecorderSettings.showMonthlyScore ? " \(Self.currency(score.earnedYen))" : ""
-            button.title = String(format: "録画中 1FPS %02d:%02d%@", elapsed / 60, elapsed % 60, scoreText)
+            button.title = RecorderSettings.showMenuBarStatus
+                ? String(format: "録画中 1FPS %02d:%02d%@", elapsed / 60, elapsed % 60, scoreText)
+                : "1FPS"
             button.contentTintColor = nil
             statusItem.menu?.item(at: 0)?.title = "録画停止"
             statusItem.menu?.item(at: 0)?.isEnabled = true
@@ -432,7 +446,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 overlay.hide()
             }
         case .encoding:
-            button.title = "1FPS 保存中"
+            button.title = RecorderSettings.showMenuBarStatus ? "1FPS 保存中" : "1FPS"
             button.contentTintColor = nil
             statusItem.menu?.item(at: 0)?.title = "保存中..."
             statusItem.menu?.item(at: 0)?.isEnabled = false
