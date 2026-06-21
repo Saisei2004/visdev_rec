@@ -9,6 +9,7 @@ enum SharedSettings {
     private static let showMenuBarTimeKey = "showMenuBarTime"
     private static let showMenuBarScoreKey = "showMenuBarScore"
     private static let legacyShowMenuBarStatusKey = "showMenuBarStatus"
+    private static let initialSetupCompletedKey = "initialSetupCompleted.v1"
     private static let showReportMenuKey = "showReportMenu"
     private static let showMonthlyScoreKey = "showMonthlyScore"
     private static let hourlyRateKey = "hourlyRate"
@@ -17,6 +18,7 @@ enum SharedSettings {
     private static let glowWhenGoalReachedKey = "glowWhenGoalReached"
     private static let pauseOnSleepKey = "pauseOnSleep"
     private static let pauseOnMouseIdleKey = "pauseOnMouseIdle"
+    private static let autoResumeOnMouseMoveKey = "autoResumeOnMouseMove"
     private static let mouseIdleMinutesKey = "mouseIdleMinutes"
     private static let reporterNameKey = "reporterName"
     private static let driveFolderURLKey = "driveFolderURL"
@@ -99,6 +101,11 @@ enum SharedSettings {
         set { defaults.set(newValue, forKey: showReportMenuKey) }
     }
 
+    static var initialSetupCompleted: Bool {
+        get { defaults.bool(forKey: initialSetupCompletedKey) }
+        set { defaults.set(newValue, forKey: initialSetupCompletedKey) }
+    }
+
     static var showMonthlyScore: Bool {
         get { defaults.bool(forKey: showMonthlyScoreKey) }
         set { defaults.set(newValue, forKey: showMonthlyScoreKey) }
@@ -149,7 +156,7 @@ enum SharedSettings {
     static var pauseOnSleep: Bool {
         get {
             if defaults.object(forKey: pauseOnSleepKey) == nil {
-                return true
+                return false
             }
             return defaults.bool(forKey: pauseOnSleepKey)
         }
@@ -159,6 +166,11 @@ enum SharedSettings {
     static var pauseOnMouseIdle: Bool {
         get { defaults.bool(forKey: pauseOnMouseIdleKey) }
         set { defaults.set(newValue, forKey: pauseOnMouseIdleKey) }
+    }
+
+    static var autoResumeOnMouseMove: Bool {
+        get { defaults.bool(forKey: autoResumeOnMouseMoveKey) }
+        set { defaults.set(newValue, forKey: autoResumeOnMouseMoveKey) }
     }
 
     static var mouseIdleMinutes: Int {
@@ -368,10 +380,23 @@ final class SettingsDelegate: NSObject, NSApplicationDelegate {
         .appendingPathComponent("Library", isDirectory: true)
         .appendingPathComponent("Application Support", isDirectory: true)
         .appendingPathComponent("OneFPSRecorder", isDirectory: true)
+    private static let permissionStatusFile = appSupportDirectory.appendingPathComponent("permission-status.txt")
+    private let isInitialSetup = CommandLine.arguments.contains("--setup")
     private var window: NSWindow!
     private var advancedWindow: NSWindow?
     private var reportDefaultsWindow: ReportDefaultsWindowController?
+    private var permissionCheckTimer: Timer?
     private let nameField = NSTextField(string: SharedSettings.recordingName)
+    private let setupDescriptionLabel = NSTextField(labelWithString: "")
+    private let scoreFeatureCheckbox = NSButton(checkboxWithTitle: "スコア計算を使う", target: nil, action: nil)
+    private let reportFeatureCheckbox = NSButton(checkboxWithTitle: "業務報告を使う", target: nil, action: nil)
+    private let pauseFeatureCheckbox = NSButton(checkboxWithTitle: "自動一時停止を使う", target: nil, action: nil)
+    private let popupOnlyRadio = NSButton(radioButtonWithTitle: "ポップアップのみ", target: nil, action: nil)
+    private let menuOnlyRadio = NSButton(radioButtonWithTitle: "メニューバーのみ", target: nil, action: nil)
+    private let bothDisplayRadio = NSButton(radioButtonWithTitle: "ポップアップとメニューバー", target: nil, action: nil)
+    private let appOnlyRadio = NSButton(radioButtonWithTitle: "設定画面だけで操作", target: nil, action: nil)
+    private let permissionStatusLabel = NSTextField(labelWithString: "画面収録の許可を確認してください。")
+    private let permissionCheckButton = NSButton(title: "権限を確認", target: nil, action: nil)
     private let overlayCheckbox = NSButton(checkboxWithTitle: "録画中パネルを表示する", target: nil, action: nil)
     private let pauseOverlayCheckbox = NSButton(checkboxWithTitle: "一時停止パネルを表示する", target: nil, action: nil)
     private let menuBarIconCheckbox = NSButton(checkboxWithTitle: "メニューバーアイコンを表示する", target: nil, action: nil)
@@ -385,6 +410,7 @@ final class SettingsDelegate: NSObject, NSApplicationDelegate {
     private let resetMonthlyScoreButton = NSButton(title: "今月を初期化", target: nil, action: nil)
     private let pauseOnSleepCheckbox = NSButton(checkboxWithTitle: "スリープ時に一時停止する", target: nil, action: nil)
     private let pauseOnMouseIdleCheckbox = NSButton(checkboxWithTitle: "マウス無操作で一時停止する", target: nil, action: nil)
+    private let autoResumeOnMouseMoveCheckbox = NSButton(checkboxWithTitle: "マウスが動いたら自動再開する", target: nil, action: nil)
     private let mouseIdleMinutesField = NSTextField(string: "\(SharedSettings.mouseIdleMinutes)")
     private let reportDefaultsButton = NSButton(title: "業務報告初期値...", target: nil, action: nil)
     private let advancedButton = NSButton(title: "詳細設定...", target: nil, action: nil)
@@ -435,39 +461,113 @@ final class SettingsDelegate: NSObject, NSApplicationDelegate {
 
     private func buildWindow() {
         window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 500, height: 276),
+            contentRect: NSRect(x: 0, y: 0, width: 760, height: isInitialSetup ? 630 : 590),
             styleMask: [.titled, .closable],
             backing: .buffered,
             defer: false
         )
-        window.title = "1FPS録画 設定"
+        window.title = isInitialSetup ? "1FPS録画 初期設定" : "1FPS録画 設定"
         window.isReleasedWhenClosed = false
         window.delegate = self
 
-        let content = NSView(frame: NSRect(x: 0, y: 0, width: 500, height: 250))
+        let contentHeight = isInitialSetup ? 604 : 564
+        let content = NSView(frame: NSRect(x: 0, y: 0, width: 760, height: contentHeight))
         window.contentView = content
+
+        var y = contentHeight - 46
+        if isInitialSetup {
+            setupDescriptionLabel.stringValue = "最初に保存名、操作方法、使う機能、画面収録の許可を確認します。ここで選んだ内容は後から設定で変更できます。"
+            setupDescriptionLabel.font = NSFont.systemFont(ofSize: 12)
+            setupDescriptionLabel.textColor = .secondaryLabelColor
+            setupDescriptionLabel.frame = NSRect(x: 30, y: y, width: 700, height: 20)
+            content.addSubview(setupDescriptionLabel)
+            y -= 40
+        }
 
         let title = NSTextField(labelWithString: "保存名")
         title.font = NSFont.systemFont(ofSize: 13, weight: .semibold)
-        title.frame = NSRect(x: 30, y: 190, width: 80, height: 20)
+        title.frame = NSRect(x: 30, y: y + 6, width: 90, height: 20)
 
-        nameField.frame = NSRect(x: 130, y: 184, width: 320, height: 28)
+        nameField.frame = NSRect(x: 150, y: y, width: 530, height: 28)
         nameField.placeholderString = "録画"
 
         let hint = NSTextField(labelWithString: "ファイル名は MMDD_名前.mp4 になります。名前変更時は既存動画も更新します。")
         hint.font = NSFont.systemFont(ofSize: 11)
         hint.textColor = .secondaryLabelColor
-        hint.frame = NSRect(x: 130, y: 156, width: 340, height: 18)
+        hint.frame = NSRect(x: 150, y: y - 24, width: 560, height: 18)
+
+        y -= 130
+
+        let featureTitle = NSTextField(labelWithString: "使う機能")
+        featureTitle.font = NSFont.systemFont(ofSize: 13, weight: .semibold)
+        featureTitle.frame = NSRect(x: 30, y: y + 58, width: 90, height: 20)
+
+        scoreFeatureCheckbox.frame = NSRect(x: 150, y: y + 58, width: 190, height: 22)
+        scoreFeatureCheckbox.state = SharedSettings.showMonthlyScore ? .on : .off
+        let scoreHint = NSTextField(labelWithString: "録画時間から月間スコアを計算して表示します。標準は使いません。")
+        scoreHint.font = NSFont.systemFont(ofSize: 11)
+        scoreHint.textColor = .secondaryLabelColor
+        scoreHint.frame = NSRect(x: 360, y: y + 60, width: 350, height: 18)
+
+        reportFeatureCheckbox.frame = NSRect(x: 150, y: y + 30, width: 190, height: 22)
+        reportFeatureCheckbox.state = SharedSettings.showReportMenu ? .on : .off
+        let reportHint = NSTextField(labelWithString: "動画と作業時間を使って業務報告を作ります。標準は使いません。")
+        reportHint.font = NSFont.systemFont(ofSize: 11)
+        reportHint.textColor = .secondaryLabelColor
+        reportHint.frame = NSRect(x: 360, y: y + 32, width: 350, height: 18)
+
+        pauseFeatureCheckbox.frame = NSRect(x: 150, y: y + 2, width: 190, height: 22)
+        pauseFeatureCheckbox.state = (SharedSettings.pauseOnSleep || SharedSettings.pauseOnMouseIdle) ? .on : .off
+        let pauseHint = NSTextField(labelWithString: "スリープや無操作時に録画を止めます。標準は使いません。")
+        pauseHint.font = NSFont.systemFont(ofSize: 11)
+        pauseHint.textColor = .secondaryLabelColor
+        pauseHint.frame = NSRect(x: 360, y: y + 4, width: 350, height: 18)
+
+        y -= 128
+
+        let displayTitle = NSTextField(labelWithString: "表示方法")
+        displayTitle.font = NSFont.systemFont(ofSize: 13, weight: .semibold)
+        displayTitle.frame = NSRect(x: 30, y: y + 74, width: 90, height: 20)
+
+        let radios = [popupOnlyRadio, menuOnlyRadio, bothDisplayRadio, appOnlyRadio]
+        for (index, radio) in radios.enumerated() {
+            radio.target = self
+            radio.action = #selector(displayModeChanged(_:))
+            radio.frame = NSRect(x: 150, y: y + 72 - (index * 28), width: 250, height: 22)
+            content.addSubview(radio)
+        }
+        selectDisplayModeFromSettings()
+
+        let displayHint = NSTextField(labelWithString: "どの表示方法でも、アプリを開けば設定画面から開始・停止できます。")
+        displayHint.font = NSFont.systemFont(ofSize: 11)
+        displayHint.textColor = .secondaryLabelColor
+        displayHint.frame = NSRect(x: 430, y: y + 50, width: 280, height: 42)
+        displayHint.maximumNumberOfLines = 2
+
+        y -= 112
+
+        let permissionTitle = NSTextField(labelWithString: "画面収録")
+        permissionTitle.font = NSFont.systemFont(ofSize: 13, weight: .semibold)
+        permissionTitle.frame = NSRect(x: 30, y: y + 24, width: 90, height: 20)
+
+        permissionStatusLabel.font = NSFont.systemFont(ofSize: 12)
+        permissionStatusLabel.textColor = .secondaryLabelColor
+        permissionStatusLabel.frame = NSRect(x: 150, y: y + 24, width: 390, height: 20)
+
+        permissionCheckButton.target = self
+        permissionCheckButton.action = #selector(checkPermissionPressed)
+        permissionCheckButton.bezelStyle = .rounded
+        permissionCheckButton.frame = NSRect(x: 560, y: y + 18, width: 120, height: 30)
 
         toggleRecordingButton.target = self
         toggleRecordingButton.action = #selector(toggleRecordingPressed)
         toggleRecordingButton.bezelStyle = .rounded
-        toggleRecordingButton.frame = NSRect(x: 130, y: 108, width: 124, height: 30)
+        toggleRecordingButton.frame = NSRect(x: 150, y: 98, width: 124, height: 30)
 
         showPanelButton.target = self
         showPanelButton.action = #selector(showPanelPressed)
         showPanelButton.bezelStyle = .rounded
-        showPanelButton.frame = NSRect(x: 264, y: 108, width: 150, height: 30)
+        showPanelButton.frame = NSRect(x: 284, y: 98, width: 150, height: 30)
 
         advancedButton.target = self
         advancedButton.action = #selector(openAdvancedSettings)
@@ -481,27 +581,55 @@ final class SettingsDelegate: NSObject, NSApplicationDelegate {
 
         let closeButton = NSButton(title: "閉じる", target: self, action: #selector(closePressed))
         closeButton.bezelStyle = .rounded
-        closeButton.frame = NSRect(x: 308, y: 22, width: 76, height: 30)
+        closeButton.frame = NSRect(x: 448, y: 22, width: 76, height: 30)
 
         let saveButton = NSButton(title: "保存", target: self, action: #selector(savePressed))
         saveButton.bezelStyle = .rounded
         saveButton.keyEquivalent = "\r"
-        saveButton.frame = NSRect(x: 394, y: 22, width: 76, height: 30)
+        saveButton.frame = NSRect(x: 534, y: 22, width: 76, height: 30)
 
         content.addSubview(title)
         content.addSubview(nameField)
         content.addSubview(hint)
+        content.addSubview(featureTitle)
+        content.addSubview(scoreFeatureCheckbox)
+        content.addSubview(scoreHint)
+        content.addSubview(reportFeatureCheckbox)
+        content.addSubview(reportHint)
+        content.addSubview(pauseFeatureCheckbox)
+        content.addSubview(pauseHint)
+        content.addSubview(displayTitle)
+        content.addSubview(displayHint)
+        content.addSubview(permissionTitle)
+        content.addSubview(permissionStatusLabel)
+        content.addSubview(permissionCheckButton)
         content.addSubview(toggleRecordingButton)
         content.addSubview(showPanelButton)
         content.addSubview(advancedButton)
         content.addSubview(quitAppButton)
         content.addSubview(closeButton)
         content.addSubview(saveButton)
+
+        if isInitialSetup {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { [weak self] in
+                self?.checkPermissionPressed()
+            }
+        }
     }
 
     @objc private func savePressed() {
+        if isInitialSetup, !permissionIsOK() {
+            showPermissionAlert()
+            checkPermissionPressed()
+            return
+        }
         let newName = SharedSettings.sanitizedRecordingName(nameField.stringValue)
         SharedSettings.recordingName = newName
+        saveFeatureSettings()
+        saveDisplayMode()
+        if isInitialSetup {
+            SharedSettings.initialSetupCompleted = true
+        }
         renameExistingRecordings(to: newName)
         rewriteRecordingLogFileNames(to: newName)
         syncAllDerivedLogs()
@@ -523,6 +651,54 @@ final class SettingsDelegate: NSObject, NSApplicationDelegate {
         Self.sendCommand("showOverlay")
     }
 
+    @objc private func checkPermissionPressed() {
+        permissionStatusLabel.stringValue = "確認中..."
+        permissionStatusLabel.textColor = .secondaryLabelColor
+        try? FileManager.default.removeItem(at: Self.permissionStatusFile)
+        Self.sendCommand("checkPermissions")
+        permissionCheckTimer?.invalidate()
+        let startedAt = Date()
+        permissionCheckTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] timer in
+            guard let self else {
+                timer.invalidate()
+                return
+            }
+            if self.permissionIsOK() {
+                self.permissionStatusLabel.stringValue = "許可されています"
+                self.permissionStatusLabel.textColor = .systemGreen
+                timer.invalidate()
+                return
+            }
+            if Date().timeIntervalSince(startedAt) > 5 {
+                self.permissionStatusLabel.stringValue = "まだ許可されていません"
+                self.permissionStatusLabel.textColor = .systemRed
+                self.openScreenRecordingSettings()
+                timer.invalidate()
+            }
+        }
+    }
+
+    private func permissionIsOK() -> Bool {
+        guard let text = try? String(contentsOf: Self.permissionStatusFile, encoding: .utf8),
+              let lastLine = text.split(separator: "\n").last
+        else { return false }
+        return lastLine.contains(" ok")
+    }
+
+    private func showPermissionAlert() {
+        let alert = NSAlert()
+        alert.messageText = "画面収録の許可が必要です"
+        alert.informativeText = "システム設定で OneFPSRecorder を許可してから、もう一度「権限を確認」を押してください。許可が確認できるまで初期設定は完了にしません。"
+        alert.addButton(withTitle: "OK")
+        alert.runModal()
+    }
+
+    private func openScreenRecordingSettings() {
+        if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture") {
+            NSWorkspace.shared.open(url)
+        }
+    }
+
     @objc private func quitAppPressed() {
         Self.sendCommand("quit")
         NSApp.terminate(nil)
@@ -532,12 +708,73 @@ final class SettingsDelegate: NSObject, NSApplicationDelegate {
         let oldName = SharedSettings.recordingName
         let newName = SharedSettings.sanitizedRecordingName(nameField.stringValue)
         SharedSettings.recordingName = newName
+        saveFeatureSettings()
+        saveDisplayMode()
         renameExistingRecordings(to: newName)
         rewriteRecordingLogFileNames(to: newName)
         if oldName != newName {
             syncAllDerivedLogs()
         }
         Self.sendCommand("refreshSettings")
+    }
+
+    private func saveFeatureSettings() {
+        let scoreEnabled = scoreFeatureCheckbox.state == .on
+        let reportEnabled = reportFeatureCheckbox.state == .on
+        let pauseEnabled = pauseFeatureCheckbox.state == .on
+        SharedSettings.showMonthlyScore = scoreEnabled
+        if scoreEnabled {
+            SharedSettings.showMenuBarScore = true
+        } else {
+            SharedSettings.showMenuBarScore = false
+            SharedSettings.glowWhenGoalReached = false
+        }
+        SharedSettings.showReportMenu = reportEnabled
+        SharedSettings.pauseOnSleep = pauseEnabled
+        SharedSettings.pauseOnMouseIdle = pauseEnabled
+        if !pauseEnabled {
+            SharedSettings.autoResumeOnMouseMove = false
+        }
+    }
+
+    private func saveDisplayMode() {
+        if popupOnlyRadio.state == .on {
+            SharedSettings.showOverlay = true
+            SharedSettings.showMenuBarIcon = false
+        } else if menuOnlyRadio.state == .on {
+            SharedSettings.showOverlay = false
+            SharedSettings.showMenuBarIcon = true
+        } else if appOnlyRadio.state == .on {
+            SharedSettings.showOverlay = false
+            SharedSettings.showMenuBarIcon = false
+        } else {
+            SharedSettings.showOverlay = true
+            SharedSettings.showMenuBarIcon = true
+        }
+    }
+
+    @objc private func displayModeChanged(_ sender: NSButton) {
+        for radio in [popupOnlyRadio, menuOnlyRadio, bothDisplayRadio, appOnlyRadio] where radio !== sender {
+            radio.state = .off
+        }
+        sender.state = .on
+    }
+
+    private func selectDisplayModeFromSettings() {
+        popupOnlyRadio.state = .off
+        menuOnlyRadio.state = .off
+        bothDisplayRadio.state = .off
+        appOnlyRadio.state = .off
+        switch (SharedSettings.showOverlay, SharedSettings.showMenuBarIcon) {
+        case (true, false):
+            popupOnlyRadio.state = .on
+        case (false, true):
+            menuOnlyRadio.state = .on
+        case (false, false):
+            appOnlyRadio.state = .on
+        default:
+            bothDisplayRadio.state = .on
+        }
     }
 
     private static func sendCommand(_ command: String) {
@@ -569,6 +806,7 @@ final class SettingsDelegate: NSObject, NSApplicationDelegate {
         glowCheckbox.state = SharedSettings.glowWhenGoalReached ? .on : .off
         pauseOnSleepCheckbox.state = SharedSettings.pauseOnSleep ? .on : .off
         pauseOnMouseIdleCheckbox.state = SharedSettings.pauseOnMouseIdle ? .on : .off
+        autoResumeOnMouseMoveCheckbox.state = SharedSettings.autoResumeOnMouseMove ? .on : .off
         mouseIdleMinutesField.stringValue = "\(SharedSettings.mouseIdleMinutes)"
         showReportMenuCheckbox.state = SharedSettings.showReportMenu ? .on : .off
         advancedWindow?.center()
@@ -578,7 +816,7 @@ final class SettingsDelegate: NSObject, NSApplicationDelegate {
 
     private func buildAdvancedWindow() {
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 540, height: 536),
+            contentRect: NSRect(x: 0, y: 0, width: 540, height: 564),
             styleMask: [.titled, .closable],
             backing: .buffered,
             defer: false
@@ -587,82 +825,85 @@ final class SettingsDelegate: NSObject, NSApplicationDelegate {
         window.isReleasedWhenClosed = false
         advancedWindow = window
 
-        let content = NSView(frame: NSRect(x: 0, y: 0, width: 540, height: 510))
+        let content = NSView(frame: NSRect(x: 0, y: 0, width: 540, height: 538))
         window.contentView = content
 
         let displayTitle = NSTextField(labelWithString: "表示")
         displayTitle.font = NSFont.systemFont(ofSize: 13, weight: .semibold)
-        displayTitle.frame = NSRect(x: 30, y: 450, width: 90, height: 20)
+        displayTitle.frame = NSRect(x: 30, y: 478, width: 90, height: 20)
 
         overlayCheckbox.state = SharedSettings.showOverlay ? .on : .off
-        overlayCheckbox.frame = NSRect(x: 150, y: 450, width: 240, height: 22)
+        overlayCheckbox.frame = NSRect(x: 150, y: 478, width: 240, height: 22)
 
         pauseOverlayCheckbox.state = SharedSettings.showPauseOverlay ? .on : .off
-        pauseOverlayCheckbox.frame = NSRect(x: 150, y: 422, width: 240, height: 22)
+        pauseOverlayCheckbox.frame = NSRect(x: 150, y: 450, width: 240, height: 22)
 
         menuBarIconCheckbox.state = SharedSettings.showMenuBarIcon ? .on : .off
-        menuBarIconCheckbox.frame = NSRect(x: 150, y: 394, width: 280, height: 22)
+        menuBarIconCheckbox.frame = NSRect(x: 150, y: 422, width: 280, height: 22)
 
         menuBarTimeCheckbox.state = SharedSettings.showMenuBarTime ? .on : .off
-        menuBarTimeCheckbox.frame = NSRect(x: 150, y: 366, width: 280, height: 22)
+        menuBarTimeCheckbox.frame = NSRect(x: 150, y: 394, width: 280, height: 22)
 
         menuBarScoreCheckbox.state = SharedSettings.showMenuBarScore ? .on : .off
-        menuBarScoreCheckbox.frame = NSRect(x: 150, y: 338, width: 280, height: 22)
+        menuBarScoreCheckbox.frame = NSRect(x: 150, y: 366, width: 280, height: 22)
 
         let displayHint = NSTextField(labelWithString: "アイコンOFF時はパネルと設定画面だけで操作します。時間とスコアは録画中だけ表示します。")
         displayHint.font = NSFont.systemFont(ofSize: 11)
         displayHint.textColor = .secondaryLabelColor
-        displayHint.frame = NSRect(x: 150, y: 312, width: 360, height: 18)
+        displayHint.frame = NSRect(x: 150, y: 340, width: 360, height: 18)
 
         let scoreTitle = NSTextField(labelWithString: "月間スコア")
         scoreTitle.font = NSFont.systemFont(ofSize: 13, weight: .semibold)
-        scoreTitle.frame = NSRect(x: 30, y: 276, width: 90, height: 20)
+        scoreTitle.frame = NSRect(x: 30, y: 304, width: 90, height: 20)
 
         monthlyScoreCheckbox.state = SharedSettings.showMonthlyScore ? .on : .off
-        monthlyScoreCheckbox.frame = NSRect(x: 150, y: 276, width: 200, height: 22)
+        monthlyScoreCheckbox.frame = NSRect(x: 150, y: 304, width: 200, height: 22)
 
         resetMonthlyScoreButton.target = self
         resetMonthlyScoreButton.action = #selector(resetMonthlyScorePressed)
         resetMonthlyScoreButton.bezelStyle = .rounded
-        resetMonthlyScoreButton.frame = NSRect(x: 390, y: 270, width: 120, height: 28)
+        resetMonthlyScoreButton.frame = NSRect(x: 390, y: 298, width: 120, height: 28)
 
         let hourlyRateLabel = NSTextField(labelWithString: "係数")
         hourlyRateLabel.font = NSFont.systemFont(ofSize: 12)
-        hourlyRateLabel.frame = NSRect(x: 150, y: 240, width: 60, height: 20)
+        hourlyRateLabel.frame = NSRect(x: 150, y: 268, width: 60, height: 20)
 
-        hourlyRateField.frame = NSRect(x: 210, y: 234, width: 100, height: 28)
+        hourlyRateField.frame = NSRect(x: 210, y: 262, width: 100, height: 28)
         hourlyRateField.placeholderString = "2000"
 
         let goalLabel = NSTextField(labelWithString: "月末ライン")
         goalLabel.font = NSFont.systemFont(ofSize: 12)
-        goalLabel.frame = NSRect(x: 330, y: 240, width: 78, height: 20)
+        goalLabel.frame = NSRect(x: 330, y: 268, width: 78, height: 20)
 
-        monthlyGoalField.frame = NSRect(x: 410, y: 234, width: 100, height: 28)
+        monthlyGoalField.frame = NSRect(x: 410, y: 262, width: 100, height: 28)
         monthlyGoalField.placeholderString = "100000"
 
         glowCheckbox.state = SharedSettings.glowWhenGoalReached ? .on : .off
-        glowCheckbox.frame = NSRect(x: 150, y: 204, width: 220, height: 22)
+        glowCheckbox.frame = NSRect(x: 150, y: 232, width: 220, height: 22)
 
         let scoreHint = NSTextField(labelWithString: "係数の標準値は 2000。月末ラインを超えると録画中パネルが発光できます。")
         scoreHint.font = NSFont.systemFont(ofSize: 11)
         scoreHint.textColor = .secondaryLabelColor
-        scoreHint.frame = NSRect(x: 150, y: 178, width: 360, height: 18)
+        scoreHint.frame = NSRect(x: 150, y: 206, width: 360, height: 18)
 
         let pauseTitle = NSTextField(labelWithString: "自動一時停止")
         pauseTitle.font = NSFont.systemFont(ofSize: 13, weight: .semibold)
-        pauseTitle.frame = NSRect(x: 30, y: 142, width: 100, height: 20)
+        pauseTitle.frame = NSRect(x: 30, y: 170, width: 100, height: 20)
 
         pauseOnSleepCheckbox.state = SharedSettings.pauseOnSleep ? .on : .off
-        pauseOnSleepCheckbox.frame = NSRect(x: 150, y: 142, width: 220, height: 22)
+        pauseOnSleepCheckbox.frame = NSRect(x: 150, y: 170, width: 220, height: 22)
 
         pauseOnMouseIdleCheckbox.state = SharedSettings.pauseOnMouseIdle ? .on : .off
-        pauseOnMouseIdleCheckbox.frame = NSRect(x: 150, y: 112, width: 220, height: 22)
+        pauseOnMouseIdleCheckbox.frame = NSRect(x: 150, y: 142, width: 220, height: 22)
+
+        autoResumeOnMouseMoveCheckbox.state = SharedSettings.autoResumeOnMouseMove ? .on : .off
+        autoResumeOnMouseMoveCheckbox.frame = NSRect(x: 150, y: 114, width: 240, height: 22)
 
         let idleMinutesLabel = NSTextField(labelWithString: "無操作分")
         idleMinutesLabel.font = NSFont.systemFont(ofSize: 12)
-        idleMinutesLabel.frame = NSRect(x: 350, y: 114, width: 60, height: 20)
+        idleMinutesLabel.frame = NSRect(x: 350, y: 144, width: 60, height: 20)
 
-        mouseIdleMinutesField.frame = NSRect(x: 410, y: 108, width: 100, height: 28)
+        mouseIdleMinutesField.frame = NSRect(x: 410, y: 138, width: 100, height: 28)
         mouseIdleMinutesField.placeholderString = "5"
 
         let reportTitle = NSTextField(labelWithString: "業務報告")
@@ -705,6 +946,7 @@ final class SettingsDelegate: NSObject, NSApplicationDelegate {
         content.addSubview(pauseTitle)
         content.addSubview(pauseOnSleepCheckbox)
         content.addSubview(pauseOnMouseIdleCheckbox)
+        content.addSubview(autoResumeOnMouseMoveCheckbox)
         content.addSubview(idleMinutesLabel)
         content.addSubview(mouseIdleMinutesField)
         content.addSubview(reportTitle)
@@ -718,10 +960,6 @@ final class SettingsDelegate: NSObject, NSApplicationDelegate {
         SharedSettings.showOverlay = overlayCheckbox.state == .on
         SharedSettings.showPauseOverlay = pauseOverlayCheckbox.state == .on
         SharedSettings.showMenuBarIcon = menuBarIconCheckbox.state == .on
-        if !SharedSettings.showMenuBarIcon {
-            SharedSettings.showOverlay = true
-            overlayCheckbox.state = .on
-        }
         SharedSettings.showMenuBarTime = menuBarTimeCheckbox.state == .on
         SharedSettings.showMenuBarScore = menuBarScoreCheckbox.state == .on
         SharedSettings.showMonthlyScore = monthlyScoreCheckbox.state == .on
@@ -730,6 +968,7 @@ final class SettingsDelegate: NSObject, NSApplicationDelegate {
         SharedSettings.glowWhenGoalReached = glowCheckbox.state == .on
         SharedSettings.pauseOnSleep = pauseOnSleepCheckbox.state == .on
         SharedSettings.pauseOnMouseIdle = pauseOnMouseIdleCheckbox.state == .on
+        SharedSettings.autoResumeOnMouseMove = autoResumeOnMouseMoveCheckbox.state == .on
         SharedSettings.mouseIdleMinutes = Int(mouseIdleMinutesField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)) ?? 5
         SharedSettings.showReportMenu = showReportMenuCheckbox.state == .on
         syncAllDerivedLogs()

@@ -11,6 +11,7 @@ enum RecorderSettings {
     private static let showMenuBarTimeKey = "showMenuBarTime"
     private static let showMenuBarScoreKey = "showMenuBarScore"
     private static let legacyShowMenuBarStatusKey = "showMenuBarStatus"
+    private static let initialSetupCompletedKey = "initialSetupCompleted.v1"
     private static let showReportMenuKey = "showReportMenu"
     private static let showMonthlyScoreKey = "showMonthlyScore"
     private static let hourlyRateKey = "hourlyRate"
@@ -19,6 +20,7 @@ enum RecorderSettings {
     private static let glowWhenGoalReachedKey = "glowWhenGoalReached"
     private static let pauseOnSleepKey = "pauseOnSleep"
     private static let pauseOnMouseIdleKey = "pauseOnMouseIdle"
+    private static let autoResumeOnMouseMoveKey = "autoResumeOnMouseMove"
     private static let mouseIdleMinutesKey = "mouseIdleMinutes"
     private static let startMessageIndexKey = "startMessageIndex"
     private static let stopMessageIndexKey = "stopMessageIndex"
@@ -112,6 +114,14 @@ enum RecorderSettings {
         set { defaults.set(newValue, forKey: showReportMenuKey) }
     }
 
+    static var initialSetupCompleted: Bool {
+        get {
+            defaults.synchronize()
+            return defaults.bool(forKey: initialSetupCompletedKey)
+        }
+        set { defaults.set(newValue, forKey: initialSetupCompletedKey) }
+    }
+
     static var showMonthlyScore: Bool {
         get {
             defaults.synchronize()
@@ -171,7 +181,7 @@ enum RecorderSettings {
         get {
             defaults.synchronize()
             if defaults.object(forKey: pauseOnSleepKey) == nil {
-                return true
+                return false
             }
             return defaults.bool(forKey: pauseOnSleepKey)
         }
@@ -184,6 +194,14 @@ enum RecorderSettings {
             return defaults.bool(forKey: pauseOnMouseIdleKey)
         }
         set { defaults.set(newValue, forKey: pauseOnMouseIdleKey) }
+    }
+
+    static var autoResumeOnMouseMove: Bool {
+        get {
+            defaults.synchronize()
+            return defaults.bool(forKey: autoResumeOnMouseMoveKey)
+        }
+        set { defaults.set(newValue, forKey: autoResumeOnMouseMoveKey) }
     }
 
     static var mouseIdleMinutes: Int {
@@ -343,6 +361,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         .appendingPathComponent("Application Support", isDirectory: true)
         .appendingPathComponent("OneFPSRecorder", isDirectory: true)
     private static let commandFile = appSupportDirectory.appendingPathComponent("command.txt")
+    private static let permissionStatusFile = appSupportDirectory.appendingPathComponent("permission-status.txt")
     private let logFile = FileManager.default.homeDirectoryForCurrentUser
         .appendingPathComponent("Library", isDirectory: true)
         .appendingPathComponent("Logs", isDirectory: true)
@@ -416,7 +435,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 self?.showAlert(recoveryReport.userMessage)
             }
         }
-        if !launchedInBackground {
+        if !RecorderSettings.initialSetupCompleted {
+            DispatchQueue.main.async { [weak self] in
+                self?.openSettingsWindow(initialSetup: true)
+            }
+        } else if !launchedInBackground {
             DispatchQueue.main.async { [weak self] in
                 self?.openSettings()
             }
@@ -801,6 +824,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         case "toggle":
             toggleRecording()
+        case "checkPermissions":
+            checkPermissionsForSettings()
         default:
             break
         }
@@ -857,7 +882,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
            hypot(currentLocation.x - lastMouseLocation.x, currentLocation.y - lastMouseLocation.y) >= 2 {
             lastMouseMovedAt = Date()
             if autoPausedByMouseIdle {
-                applyStatus(.idle)
+                if RecorderSettings.autoResumeOnMouseMove {
+                    log("Mouse moved while automatically paused; resuming")
+                    resumeRecordingFromPauseOverlay()
+                } else {
+                    applyStatus(.idle)
+                }
             }
             return
         }
@@ -924,6 +954,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func openSettings() {
+        openSettingsWindow(initialSetup: false)
+    }
+
+    private func openSettingsWindow(initialSetup: Bool) {
         log("Settings requested")
         let helperURL = Bundle.main.bundleURL
             .appendingPathComponent("Contents", isDirectory: true)
@@ -931,6 +965,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             .appendingPathComponent("OneFPSRecorderSettings")
         let process = Process()
         process.executableURL = helperURL
+        process.arguments = initialSetup ? ["--setup"] : []
         do {
             try process.run()
         } catch {
@@ -948,6 +983,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         alert.informativeText = message
         alert.alertStyle = .warning
         alert.runModal()
+    }
+
+    private func checkPermissionsForSettings() {
+        let ok = OneFPSRecorder.hasScreenCaptureAccess(requestIfNeeded: true)
+        let status = ok ? "ok" : "ng"
+        try? FileManager.default.createDirectory(at: Self.appSupportDirectory, withIntermediateDirectories: true)
+        try? "\(Date().timeIntervalSince1970) \(status)\n".write(to: Self.permissionStatusFile, atomically: true, encoding: .utf8)
+        log("Permission check result: \(status)")
     }
 
     private func setupCommandNotifications() {
@@ -1823,14 +1866,7 @@ final class OneFPSRecorder: NSObject {
     }
 
     private static func ensureScreenCaptureAccess() throws {
-        if CGPreflightScreenCaptureAccess() {
-            return
-        }
-        if canCaptureTestFrame() {
-            return
-        }
-        _ = CGRequestScreenCaptureAccess()
-        if CGPreflightScreenCaptureAccess() || canCaptureTestFrame() {
+        if hasScreenCaptureAccess(requestIfNeeded: true) {
             return
         }
         throw NSError(
@@ -1840,6 +1876,19 @@ final class OneFPSRecorder: NSObject {
                 NSLocalizedDescriptionKey: "画面収録の許可が必要です。システム設定 > プライバシーとセキュリティ > 画面とシステムオーディオ収録 で OneFPSRecorder を許可してから、もう一度録画開始してください。"
             ]
         )
+    }
+
+    static func hasScreenCaptureAccess(requestIfNeeded: Bool) -> Bool {
+        if CGPreflightScreenCaptureAccess() {
+            return true
+        }
+        if canCaptureTestFrame() {
+            return true
+        }
+        if requestIfNeeded {
+            _ = CGRequestScreenCaptureAccess()
+        }
+        return CGPreflightScreenCaptureAccess() || canCaptureTestFrame()
     }
 
     private static func canCaptureTestFrame() -> Bool {
