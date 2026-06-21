@@ -371,7 +371,7 @@ final class SettingsDelegate: NSObject, NSApplicationDelegate {
     private let reportDefaultsButton = NSButton(title: "業務報告初期値...", target: nil, action: nil)
     private let advancedButton = NSButton(title: "詳細設定...", target: nil, action: nil)
     private let toggleRecordingButton = NSButton(title: "録画開始/停止", target: nil, action: nil)
-    private let showPanelButton = NSButton(title: "小さいパネル表示", target: nil, action: nil)
+    private let showPanelButton = NSButton(title: "パネルを今すぐ表示", target: nil, action: nil)
 
     private func bundledExecutable(_ name: String) -> URL {
         if let resourceURL = Bundle.main.resourceURL?.appendingPathComponent(name),
@@ -436,7 +436,7 @@ final class SettingsDelegate: NSObject, NSApplicationDelegate {
         showPanelButton.target = self
         showPanelButton.action = #selector(showPanelPressed)
         showPanelButton.bezelStyle = .rounded
-        showPanelButton.frame = NSRect(x: 264, y: 76, width: 138, height: 30)
+        showPanelButton.frame = NSRect(x: 264, y: 76, width: 150, height: 30)
 
         advancedButton.target = self
         advancedButton.action = #selector(openAdvancedSettings)

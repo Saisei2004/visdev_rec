@@ -342,6 +342,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var settingsWindowController: SettingsWindowController?
     private var reportWindowController: ReportSubmissionWindowController?
     private var overlayMessage = ""
+    private var manualReadyOverlayVisible = false
     private var activityTimer: DispatchSourceTimer?
     private var lastMouseLocation: CGPoint?
     private var lastMouseMovedAt = Date()
@@ -458,6 +459,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             statusItem.menu?.item(at: 0)?.isEnabled = true
             if isAutomaticallyPaused, RecorderSettings.showPauseOverlay {
                 overlay.showPaused(message: automaticPauseMessage)
+            } else if manualReadyOverlayVisible, RecorderSettings.showOverlay {
+                overlay.showReady(message: "ここから録画できます")
             } else {
                 overlay.hide()
             }
@@ -616,6 +619,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         lastToggleAt = now
         log("Toggle recording requested")
+        manualReadyOverlayVisible = false
         if recorder.isRecording {
             autoPausedBySleep = false
             autoPausedByMouseIdle = false
@@ -640,6 +644,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func stopRecordingFromOverlay() {
         guard recorder.isRecording else { return }
+        manualReadyOverlayVisible = false
         autoPausedBySleep = false
         autoPausedByMouseIdle = false
         log("Overlay stop requested")
@@ -649,6 +654,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func startRecordingFromOverlay() {
         guard !recorder.isRecording else { return }
+        manualReadyOverlayVisible = false
         autoPausedBySleep = false
         autoPausedByMouseIdle = false
         log("Overlay start requested")
@@ -708,9 +714,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         case "showOverlay":
             RecorderSettings.showOverlay = true
             if recorder.isRecording, let startedAt = recorder.currentStartedAt {
+                manualReadyOverlayVisible = false
                 applyStatus(.recording(startedAt))
+                overlay.revealOnMainDisplay()
             } else {
+                manualReadyOverlayVisible = true
                 overlay.showReady(message: "ここから録画できます")
+                overlay.revealOnMainDisplay()
             }
         case "refreshSettings":
             if recorder.isRecording, let startedAt = recorder.currentStartedAt {
@@ -1475,6 +1485,13 @@ final class RecordingOverlay {
         panel.orderFrontRegardless()
     }
 
+    func revealOnMainDisplay() {
+        positionOnMainDisplay(ignoringSavedOrigin: true)
+        NSApp.activate(ignoringOtherApps: true)
+        panel.makeKeyAndOrderFront(nil)
+        panel.orderFrontRegardless()
+    }
+
     private func layoutSubviews() {
         statusDot.frame = NSRect(x: 16, y: 49, width: 9, height: 9)
         titleLabel.frame = NSRect(x: 34, y: 44, width: 118, height: 18)
@@ -1507,8 +1524,8 @@ final class RecordingOverlay {
         statusDot.layer?.shadowColor = color.cgColor
     }
 
-    private func positionOnMainDisplay() {
-        if let savedOrigin = savedOriginInsideAnyScreen() {
+    private func positionOnMainDisplay(ignoringSavedOrigin: Bool = false) {
+        if !ignoringSavedOrigin, let savedOrigin = savedOriginInsideAnyScreen() {
             panel.setFrameOrigin(savedOrigin)
             return
         }
