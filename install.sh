@@ -148,7 +148,10 @@ cat > "$AGENT_PLIST" <<PLIST
   <string>local.codex.OneFPSRecorder</string>
   <key>ProgramArguments</key>
   <array>
-    <string>$INSTALLED_APP/Contents/MacOS/$APP_NAME</string>
+    <string>/usr/bin/open</string>
+    <string>-gj</string>
+    <string>$INSTALLED_APP</string>
+    <string>--args</string>
     <string>--background</string>
   </array>
   <key>RunAtLoad</key>
@@ -160,6 +163,7 @@ pkill -f "$INSTALLED_APP/Contents/MacOS/$APP_NAME" 2>/dev/null || true
 launchctl bootout "gui/$(id -u)" "$AGENT_PLIST" 2>/dev/null || true
 launchctl bootstrap "gui/$(id -u)" "$AGENT_PLIST"
 launchctl kickstart -k "gui/$(id -u)/local.codex.OneFPSRecorder"
+rm -rf "$APP_DIR"
 
 echo "インストールして起動しました: $INSTALLED_APP"
 echo "ログイン時の自動起動: $AGENT_PLIST"

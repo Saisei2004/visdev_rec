@@ -35,7 +35,10 @@ cat > "$AGENT_PLIST" <<PLIST
   <string>local.codex.OneFPSRecorder</string>
   <key>ProgramArguments</key>
   <array>
-    <string>$INSTALLED_APP/Contents/MacOS/$APP_NAME</string>
+    <string>/usr/bin/open</string>
+    <string>-gj</string>
+    <string>$INSTALLED_APP</string>
+    <string>--args</string>
     <string>--background</string>
   </array>
   <key>RunAtLoad</key>

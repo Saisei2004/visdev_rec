@@ -1543,7 +1543,11 @@ final class OneFPSRecorder: NSObject {
         if CGPreflightScreenCaptureAccess() {
             return
         }
-        if CGRequestScreenCaptureAccess(), CGPreflightScreenCaptureAccess() {
+        if canCaptureTestFrame() {
+            return
+        }
+        _ = CGRequestScreenCaptureAccess()
+        if CGPreflightScreenCaptureAccess() || canCaptureTestFrame() {
             return
         }
         throw NSError(
@@ -1553,6 +1557,28 @@ final class OneFPSRecorder: NSObject {
                 NSLocalizedDescriptionKey: "画面収録の許可が必要です。システム設定 > プライバシーとセキュリティ > 画面とシステムオーディオ収録 で OneFPSRecorder を許可してから、もう一度録画開始してください。"
             ]
         )
+    }
+
+    private static func canCaptureTestFrame() -> Bool {
+        let testURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("onefps-permission-\(UUID().uuidString).jpg")
+        defer { try? FileManager.default.removeItem(at: testURL) }
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")
+        process.arguments = ["-x", "-t", "jpg", testURL.path]
+        process.standardOutput = Pipe()
+        process.standardError = Pipe()
+        do {
+            try process.run()
+            process.waitUntilExit()
+            let fileSize = (try? FileManager.default.attributesOfItem(atPath: testURL.path)[.size] as? NSNumber)?
+                .intValue ?? 0
+            return process.terminationStatus == 0
+                && FileManager.default.fileExists(atPath: testURL.path)
+                && fileSize > 0
+        } catch {
+            return false
+        }
     }
 
     func stop() {
