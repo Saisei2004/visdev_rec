@@ -98,6 +98,7 @@ rm -rf "$DIST_DIR"
 mkdir -p "$APP_DIR/Contents/MacOS" "$APP_DIR/Contents/Resources"
 cp "$BUILD_DIR/$APP_NAME" "$APP_DIR/Contents/MacOS/$APP_NAME"
 cp "$BUILD_DIR/${APP_NAME}Settings" "$APP_DIR/Contents/MacOS/${APP_NAME}Settings"
+cp "$ROOT_DIR/Resources/AppIcon.icns" "$APP_DIR/Contents/Resources/AppIcon.icns"
 cp "$ROOT_DIR/scripts/update_report_docx.py" "$APP_DIR/Contents/Resources/update_report_docx.py"
 cp "$ROOT_DIR/scripts/sync_google_report.py" "$APP_DIR/Contents/Resources/sync_google_report.py"
 cp "$LOCAL_BIN/ffmpeg" "$APP_DIR/Contents/Resources/ffmpeg"
@@ -118,6 +119,8 @@ cat > "$APP_DIR/Contents/Info.plist" <<PLIST
   <string>local.codex.OneFPSRecorder</string>
   <key>CFBundleName</key>
   <string>OneFPSRecorder</string>
+  <key>CFBundleIconFile</key>
+  <string>AppIcon</string>
   <key>CFBundlePackageType</key>
   <string>APPL</string>
   <key>CFBundleShortVersionString</key>
