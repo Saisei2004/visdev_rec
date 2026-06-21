@@ -328,10 +328,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var lastMouseMovedAt = Date()
     private var autoPausedBySleep = false
     private var autoPausedByMouseIdle = false
+    private let launchedInBackground = CommandLine.arguments.contains("--background")
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
         guard acquireSingleInstanceLock() else {
+            Self.sendCommand("settings")
             NSApp.terminate(nil)
             return
         }
@@ -353,6 +355,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         setupStatusItem()
         overlay = RecordingOverlay(
+            startAction: { [weak self] in
+                self?.startRecordingFromOverlay()
+            },
             stopAction: { [weak self] in
                 self?.stopRecordingFromOverlay()
             },
@@ -364,6 +369,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         setupAutomaticPauseHandling()
         applyStatus(.idle)
         log("OneFPSRecorder launched")
+        if !launchedInBackground {
+            DispatchQueue.main.async { [weak self] in
+                self?.openSettings()
+            }
+        }
     }
 
     func applicationWillTerminate(_ notification: Notification) {
@@ -377,6 +387,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             flock(lockFileHandle.fileDescriptor, LOCK_UN)
             try? lockFileHandle.close()
         }
+    }
+
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        openSettings()
+        return true
     }
 
     private func setupStatusItem() {
@@ -523,6 +538,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         recorder.stop()
     }
 
+    private func startRecordingFromOverlay() {
+        guard !recorder.isRecording else { return }
+        autoPausedBySleep = false
+        autoPausedByMouseIdle = false
+        log("Overlay start requested")
+        overlayMessage = Self.startMessage()
+        Task {
+            do {
+                try await recorder.start()
+            } catch {
+                log("Overlay start failed: \(error.localizedDescription)")
+                await MainActor.run {
+                    applyStatus(.error(error.localizedDescription))
+                }
+            }
+        }
+    }
+
     private func resumeRecordingFromPauseOverlay() {
         guard isAutomaticallyPaused else { return }
         log("Pause overlay resume requested")
@@ -563,6 +596,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         case "settings":
             openSettings()
+        case "showOverlay":
+            RecorderSettings.showOverlay = true
+            if recorder.isRecording, let startedAt = recorder.currentStartedAt {
+                applyStatus(.recording(startedAt))
+            } else {
+                overlay.showReady(message: "ここから録画できます")
+            }
         case "toggle":
             toggleRecording()
         default:
@@ -889,6 +929,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return false
     }
 
+    private static func sendCommand(_ command: String) {
+        try? FileManager.default.createDirectory(at: appSupportDirectory, withIntermediateDirectories: true)
+        let commandFile = appSupportDirectory.appendingPathComponent("command.txt")
+        let line = "\(Date().timeIntervalSince1970) \(command)\n"
+        if FileManager.default.fileExists(atPath: commandFile.path),
+           let handle = try? FileHandle(forWritingTo: commandFile) {
+            _ = try? handle.seekToEnd()
+            try? handle.write(contentsOf: Data(line.utf8))
+            try? handle.close()
+        } else {
+            try? Data(line.utf8).write(to: commandFile)
+        }
+    }
+
 }
 
 enum RecorderState {
@@ -1152,6 +1206,7 @@ final class RecordingOverlay {
     private let messageLabel = DraggableLabel(labelWithString: "")
     private let statusDot = DraggableDotView(frame: NSRect(x: 0, y: 0, width: 9, height: 9))
     private let stopButton = NSButton(title: "停止", target: nil, action: nil)
+    private let startAction: () -> Void
     private let stopAction: () -> Void
     private let resumeAction: () -> Void
     private var buttonMode: ButtonMode = .stop
@@ -1159,11 +1214,13 @@ final class RecordingOverlay {
     private var glowHue: CGFloat = 0
 
     private enum ButtonMode {
+        case start
         case stop
         case resume
     }
 
-    init(stopAction: @escaping () -> Void, resumeAction: @escaping () -> Void) {
+    init(startAction: @escaping () -> Void, stopAction: @escaping () -> Void, resumeAction: @escaping () -> Void) {
+        self.startAction = startAction
         self.stopAction = stopAction
         self.resumeAction = resumeAction
 
@@ -1228,6 +1285,21 @@ final class RecordingOverlay {
         root.addSubview(stopButton)
         panel.contentView = root
         layoutSubviews()
+    }
+
+    func showReady(message: String) {
+        titleLabel.stringValue = "1FPS 待機中"
+        scoreLabel.stringValue = ""
+        scoreLabel.isHidden = true
+        messageLabel.stringValue = message
+        statusDot.layer?.backgroundColor = NSColor.systemBlue.cgColor
+        statusDot.layer?.shadowColor = NSColor.systemBlue.cgColor
+        stopButton.isEnabled = true
+        stopButton.title = "開始"
+        stopButton.contentTintColor = .systemBlue
+        buttonMode = .start
+        setGlowEnabled(false)
+        show()
     }
 
     func showRecording(elapsedSeconds: Int, message: String, scoreText: String?, glow: Bool) {
@@ -1366,6 +1438,8 @@ final class RecordingOverlay {
     @objc private func stopPressed() {
         saveCurrentOrigin()
         switch buttonMode {
+        case .start:
+            startAction()
         case .stop:
             stopAction()
         case .resume:
@@ -1415,6 +1489,7 @@ final class OneFPSRecorder: NSObject {
     private var encodingJobCount = 0
 
     var isRecording: Bool { startedAt != nil }
+    var currentStartedAt: Date? { startedAt }
 
     private struct PendingSegment {
         let frameDirectory: URL

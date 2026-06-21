@@ -174,6 +174,7 @@ if [[ -n "$INSTALLER_IDENTITY" ]] && command -v pkgbuild >/dev/null 2>&1 && comm
   <key>ProgramArguments</key>
   <array>
     <string>/Applications/OneFPSRecorder.app/Contents/MacOS/OneFPSRecorder</string>
+    <string>--background</string>
   </array>
   <key>RunAtLoad</key>
   <true/>

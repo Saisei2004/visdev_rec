@@ -36,6 +36,7 @@ cat > "$AGENT_PLIST" <<PLIST
   <key>ProgramArguments</key>
   <array>
     <string>$INSTALLED_APP/Contents/MacOS/$APP_NAME</string>
+    <string>--background</string>
   </array>
   <key>RunAtLoad</key>
   <true/>

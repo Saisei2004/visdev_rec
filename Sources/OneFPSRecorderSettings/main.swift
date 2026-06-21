@@ -335,6 +335,10 @@ final class ReportDefaultsWindowController: NSWindowController {
 }
 
 final class SettingsDelegate: NSObject, NSApplicationDelegate {
+    private static let appSupportDirectory = FileManager.default.homeDirectoryForCurrentUser
+        .appendingPathComponent("Library", isDirectory: true)
+        .appendingPathComponent("Application Support", isDirectory: true)
+        .appendingPathComponent("OneFPSRecorder", isDirectory: true)
     private var window: NSWindow!
     private var advancedWindow: NSWindow?
     private var reportDefaultsWindow: ReportDefaultsWindowController?
@@ -352,6 +356,8 @@ final class SettingsDelegate: NSObject, NSApplicationDelegate {
     private let mouseIdleMinutesField = NSTextField(string: "\(SharedSettings.mouseIdleMinutes)")
     private let reportDefaultsButton = NSButton(title: "業務報告初期値...", target: nil, action: nil)
     private let advancedButton = NSButton(title: "詳細設定...", target: nil, action: nil)
+    private let toggleRecordingButton = NSButton(title: "録画開始/停止", target: nil, action: nil)
+    private let showPanelButton = NSButton(title: "小さいパネル表示", target: nil, action: nil)
 
     private func bundledExecutable(_ name: String) -> URL {
         if let resourceURL = Bundle.main.resourceURL?.appendingPathComponent(name),
@@ -372,7 +378,7 @@ final class SettingsDelegate: NSObject, NSApplicationDelegate {
 
     private func buildWindow() {
         window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 500, height: 276),
+            contentRect: NSRect(x: 0, y: 0, width: 500, height: 330),
             styleMask: [.titled, .closable],
             backing: .buffered,
             defer: false
@@ -381,29 +387,39 @@ final class SettingsDelegate: NSObject, NSApplicationDelegate {
         window.isReleasedWhenClosed = false
         window.delegate = self
 
-        let content = NSView(frame: NSRect(x: 0, y: 0, width: 500, height: 250))
+        let content = NSView(frame: NSRect(x: 0, y: 0, width: 500, height: 304))
         window.contentView = content
 
         let title = NSTextField(labelWithString: "保存名")
         title.font = NSFont.systemFont(ofSize: 13, weight: .semibold)
-        title.frame = NSRect(x: 30, y: 190, width: 80, height: 20)
+        title.frame = NSRect(x: 30, y: 244, width: 80, height: 20)
 
-        nameField.frame = NSRect(x: 130, y: 184, width: 320, height: 28)
+        nameField.frame = NSRect(x: 130, y: 238, width: 320, height: 28)
         nameField.placeholderString = "録画"
 
         let hint = NSTextField(labelWithString: "ファイル名は MMDD_名前.mp4 になります。名前変更時は既存動画も更新します。")
         hint.font = NSFont.systemFont(ofSize: 11)
         hint.textColor = .secondaryLabelColor
-        hint.frame = NSRect(x: 130, y: 156, width: 340, height: 18)
+        hint.frame = NSRect(x: 130, y: 210, width: 340, height: 18)
 
         overlayCheckbox.state = SharedSettings.showOverlay ? .on : .off
-        overlayCheckbox.frame = NSRect(x: 130, y: 124, width: 240, height: 22)
+        overlayCheckbox.frame = NSRect(x: 130, y: 178, width: 240, height: 22)
 
         pauseOverlayCheckbox.state = SharedSettings.showPauseOverlay ? .on : .off
-        pauseOverlayCheckbox.frame = NSRect(x: 130, y: 96, width: 240, height: 22)
+        pauseOverlayCheckbox.frame = NSRect(x: 130, y: 150, width: 240, height: 22)
 
         menuBarStatusCheckbox.state = SharedSettings.showMenuBarStatus ? .on : .off
-        menuBarStatusCheckbox.frame = NSRect(x: 130, y: 68, width: 300, height: 22)
+        menuBarStatusCheckbox.frame = NSRect(x: 130, y: 122, width: 300, height: 22)
+
+        toggleRecordingButton.target = self
+        toggleRecordingButton.action = #selector(toggleRecordingPressed)
+        toggleRecordingButton.bezelStyle = .rounded
+        toggleRecordingButton.frame = NSRect(x: 130, y: 76, width: 124, height: 30)
+
+        showPanelButton.target = self
+        showPanelButton.action = #selector(showPanelPressed)
+        showPanelButton.bezelStyle = .rounded
+        showPanelButton.frame = NSRect(x: 264, y: 76, width: 138, height: 30)
 
         advancedButton.target = self
         advancedButton.action = #selector(openAdvancedSettings)
@@ -425,6 +441,8 @@ final class SettingsDelegate: NSObject, NSApplicationDelegate {
         content.addSubview(overlayCheckbox)
         content.addSubview(pauseOverlayCheckbox)
         content.addSubview(menuBarStatusCheckbox)
+        content.addSubview(toggleRecordingButton)
+        content.addSubview(showPanelButton)
         content.addSubview(advancedButton)
         content.addSubview(closeButton)
         content.addSubview(saveButton)
@@ -444,6 +462,45 @@ final class SettingsDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func closePressed() {
         NSApp.terminate(nil)
+    }
+
+    @objc private func toggleRecordingPressed() {
+        saveCurrentSimpleSettings()
+        Self.sendCommand("toggle")
+    }
+
+    @objc private func showPanelPressed() {
+        SharedSettings.showOverlay = true
+        overlayCheckbox.state = .on
+        Self.sendCommand("showOverlay")
+    }
+
+    private func saveCurrentSimpleSettings() {
+        let oldName = SharedSettings.recordingName
+        let newName = SharedSettings.sanitizedRecordingName(nameField.stringValue)
+        SharedSettings.recordingName = newName
+        SharedSettings.showOverlay = overlayCheckbox.state == .on
+        SharedSettings.showPauseOverlay = pauseOverlayCheckbox.state == .on
+        SharedSettings.showMenuBarStatus = menuBarStatusCheckbox.state == .on
+        renameExistingRecordings(to: newName)
+        rewriteRecordingLogFileNames(to: newName)
+        if oldName != newName {
+            syncAllDerivedLogs()
+        }
+    }
+
+    private static func sendCommand(_ command: String) {
+        try? FileManager.default.createDirectory(at: appSupportDirectory, withIntermediateDirectories: true)
+        let commandFile = appSupportDirectory.appendingPathComponent("command.txt")
+        let line = "\(Date().timeIntervalSince1970) \(command)\n"
+        if FileManager.default.fileExists(atPath: commandFile.path),
+           let handle = try? FileHandle(forWritingTo: commandFile) {
+            _ = try? handle.seekToEnd()
+            try? handle.write(contentsOf: Data(line.utf8))
+            try? handle.close()
+        } else {
+            try? Data(line.utf8).write(to: commandFile)
+        }
     }
 
     @objc private func openAdvancedSettings() {
