@@ -374,11 +374,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var lastToggleAt = Date.distantPast
     private var commandTimer: DispatchSourceTimer?
     private var lastCommandLine = ""
+    private let appStartedAt = Date()
     private var lockFileHandle: FileHandle?
     private var settingsWindowController: SettingsWindowController?
     private var reportWindowController: ReportSubmissionWindowController?
     private var overlayMessage = ""
     private var manualReadyOverlayVisible = false
+    private var wasRecordingDisplayState = false
     private var activityTimer: DispatchSourceTimer?
     private var lastMouseLocation: CGPoint?
     private var lastMouseMovedAt = Date()
@@ -537,6 +539,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         refreshMenuVisibility()
         switch state {
         case .idle:
+            wasRecordingDisplayState = false
             setMenuBarDisplay(
                 title: isAutomaticallyPaused ? "一時停止" : "1FPS",
                 symbolName: isAutomaticallyPaused ? "pause.circle.fill" : "record.circle",
@@ -554,6 +557,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 overlay.hide()
             }
         case .idleSaving:
+            wasRecordingDisplayState = false
             setMenuBarDisplay(
                 title: "保存中",
                 symbolName: "tray.and.arrow.down.fill",
@@ -573,6 +577,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let elapsed = Int(Date().timeIntervalSince(startedAt))
             let score = OneFPSRecorder.monthlyScore(includingCurrentStartedAt: startedAt)
             let titleParts = menuBarRecordingTitleParts(elapsed: elapsed, scoreYen: score.earnedYen)
+            let shouldRevealRecordingPanel = !wasRecordingDisplayState
+            wasRecordingDisplayState = true
             setMenuBarDisplay(
                 title: titleParts.isEmpty ? "録画中" : titleParts.joined(separator: " "),
                 symbolName: "record.circle.fill",
@@ -589,12 +595,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     glow: RecorderSettings.showMonthlyScore
                         && RecorderSettings.glowWhenGoalReached
                         && RecorderSettings.monthlyGoal > 0
-                        && score.earnedYen >= RecorderSettings.monthlyGoal
+                        && score.earnedYen >= RecorderSettings.monthlyGoal,
+                    revealOnMainDisplay: shouldRevealRecordingPanel
                 )
             } else {
                 overlay.hide()
             }
         case .encoding:
+            wasRecordingDisplayState = false
             setMenuBarDisplay(
                 title: "保存中",
                 symbolName: "tray.and.arrow.down.fill",
@@ -611,6 +619,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 overlay.hide()
             }
         case .error(let message):
+            wasRecordingDisplayState = false
             setMenuBarDisplay(title: "エラー", symbolName: "exclamationmark.circle.fill", tint: .systemRed)
             statusItem?.menu?.item(at: 0)?.title = "録画開始"
             statusItem?.menu?.item(at: 0)?.isEnabled = true
@@ -995,7 +1004,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func setupCommandNotifications() {
         try? FileManager.default.createDirectory(at: Self.appSupportDirectory, withIntermediateDirectories: true)
-        lastCommandLine = currentCommandLine() ?? ""
+        lastCommandLine = ""
         let timer = DispatchSource.makeTimerSource(queue: .main)
         timer.schedule(deadline: .now() + 0.5, repeating: 0.5, leeway: .milliseconds(100))
         timer.setEventHandler { [weak self] in
@@ -1015,6 +1024,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         lastCommandLine = line
         let parts = line.split(separator: " ", maxSplits: 1).map(String.init)
         guard parts.count == 2 else { return }
+        guard let timestamp = TimeInterval(parts[0]) else { return }
+        if timestamp < appStartedAt.addingTimeInterval(-30).timeIntervalSince1970 {
+            return
+        }
         handleCommand(parts[1])
     }
 
@@ -1571,7 +1584,13 @@ final class RecordingOverlay {
         show()
     }
 
-    func showRecording(elapsedSeconds: Int, message: String, scoreText: String?, glow: Bool) {
+    func showRecording(
+        elapsedSeconds: Int,
+        message: String,
+        scoreText: String?,
+        glow: Bool,
+        revealOnMainDisplay: Bool = false
+    ) {
         titleLabel.stringValue = String(format: "録画 %02d:%02d", elapsedSeconds / 60, elapsedSeconds % 60)
         scoreLabel.stringValue = scoreText ?? ""
         scoreLabel.isHidden = scoreText == nil
@@ -1584,7 +1603,7 @@ final class RecordingOverlay {
         secondaryStopButton.isHidden = true
         buttonMode = .stop
         setGlowEnabled(glow)
-        show()
+        show(ignoringSavedOrigin: revealOnMainDisplay)
     }
 
     func showSaving(message: String) {
@@ -1628,8 +1647,12 @@ final class RecordingOverlay {
         panel.orderOut(nil)
     }
 
-    private func show() {
-        if !panel.isVisible {
+    private func show(ignoringSavedOrigin: Bool = false) {
+        if ignoringSavedOrigin {
+            positionOnMainDisplay(ignoringSavedOrigin: true)
+            NSApp.activate(ignoringOtherApps: true)
+            panel.makeKeyAndOrderFront(nil)
+        } else if !panel.isVisible {
             positionOnMainDisplay()
         }
         panel.orderFrontRegardless()
