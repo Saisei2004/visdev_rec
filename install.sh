@@ -110,9 +110,19 @@ mkdir -p "$INSTALL_DIR"
 rm -rf "$INSTALLED_APP"
 cp -R "$APP_DIR" "$INSTALLED_APP"
 xattr -dr com.apple.quarantine "$INSTALLED_APP" 2>/dev/null || true
-SIGNING_IDENTITY="$(security find-identity -p codesigning -v 2>/dev/null | awk -F '\"' '/Apple Development:/{print $2; exit}')"
+SIGNING_IDENTITY="${ONEFPS_SIGNING_IDENTITY:-}"
+if [[ -z "$SIGNING_IDENTITY" ]]; then
+  SIGNING_IDENTITY="$(security find-identity -p codesigning -v 2>/dev/null | awk -F '\"' '/Developer ID Application:/{print $2; exit}')"
+fi
+if [[ -z "$SIGNING_IDENTITY" ]]; then
+  SIGNING_IDENTITY="$(security find-identity -p codesigning -v 2>/dev/null | awk -F '\"' '/Apple Development:/{print $2; exit}')"
+fi
 if [[ -n "${SIGNING_IDENTITY:-}" ]]; then
-  codesign --force --deep --sign "$SIGNING_IDENTITY" "$INSTALLED_APP"
+  if [[ "$SIGNING_IDENTITY" == Developer\ ID\ Application:* ]]; then
+    codesign --force --deep --options runtime --timestamp --sign "$SIGNING_IDENTITY" "$INSTALLED_APP"
+  else
+    codesign --force --deep --sign "$SIGNING_IDENTITY" "$INSTALLED_APP"
+  fi
   echo "Signed with: $SIGNING_IDENTITY"
 else
   codesign --force --deep --sign - "$INSTALLED_APP"
