@@ -344,6 +344,15 @@ final class SettingsDelegate: NSObject, NSApplicationDelegate {
     private let reportDefaultsButton = NSButton(title: "業務報告初期値...", target: nil, action: nil)
     private let advancedButton = NSButton(title: "詳細設定...", target: nil, action: nil)
 
+    private func bundledExecutable(_ name: String) -> URL {
+        if let resourceURL = Bundle.main.resourceURL?.appendingPathComponent(name),
+           FileManager.default.isExecutableFile(atPath: resourceURL.path) {
+            return resourceURL
+        }
+        return FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".local/bin/\(name)")
+    }
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.regular)
         buildWindow()
@@ -611,6 +620,7 @@ final class SettingsDelegate: NSObject, NSApplicationDelegate {
         var urls: [URL] = []
         for case let fileURL as URL in enumerator {
             if fileURL.pathComponents.contains("バックアップ") { continue }
+            if fileURL.pathComponents.contains("提出") { continue }
             if fileURL.pathExtension.lowercased() == "mp4",
                let basename = Optional(fileURL.deletingPathExtension().lastPathComponent),
                !basename.hasPrefix("."),
@@ -635,8 +645,7 @@ final class SettingsDelegate: NSObject, NSApplicationDelegate {
 
         do {
             try concatList.write(to: listURL, atomically: true, encoding: .utf8)
-            let ffmpeg = FileManager.default.homeDirectoryForCurrentUser
-                .appendingPathComponent(".local/bin/ffmpeg")
+            let ffmpeg = bundledExecutable("ffmpeg")
             let process = Process()
             process.executableURL = ffmpeg
             process.arguments = [

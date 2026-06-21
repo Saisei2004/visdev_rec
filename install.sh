@@ -67,7 +67,7 @@ ensure_command codesign
 ensure_ffmpeg
 swift build -c release
 
-if find "$HOME/Movies/1FPS録画" -maxdepth 1 -type d -name '.frames-*' 2>/dev/null | grep -q .; then
+if find "$HOME/Movies/1FPS録画" -maxdepth 3 -type d -name '.frames-*' 2>/dev/null | grep -q .; then
   echo "録画中の一時フレームがあります。録画停止後にもう一度インストールしてください。"
   echo "保存中にアプリを入れ替えないよう、ここで止めています。"
   exit 2
@@ -79,6 +79,12 @@ cp "$BUILD_DIR/$APP_NAME" "$APP_DIR/Contents/MacOS/$APP_NAME"
 cp "$BUILD_DIR/${APP_NAME}Settings" "$APP_DIR/Contents/MacOS/${APP_NAME}Settings"
 cp "$ROOT_DIR/scripts/update_report_docx.py" "$APP_DIR/Contents/Resources/update_report_docx.py"
 cp "$ROOT_DIR/scripts/sync_google_report.py" "$APP_DIR/Contents/Resources/sync_google_report.py"
+cp "$LOCAL_BIN/ffmpeg" "$APP_DIR/Contents/Resources/ffmpeg"
+chmod +x "$APP_DIR/Contents/Resources/ffmpeg"
+if [[ -x "$LOCAL_BIN/ffprobe" ]]; then
+  cp "$LOCAL_BIN/ffprobe" "$APP_DIR/Contents/Resources/ffprobe"
+  chmod +x "$APP_DIR/Contents/Resources/ffprobe"
+fi
 cat > "$APP_DIR/Contents/Info.plist" <<'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">

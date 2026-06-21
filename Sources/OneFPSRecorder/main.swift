@@ -1385,6 +1385,8 @@ final class OneFPSRecorder: NSObject {
     private static let legacyRecordingsDirectory = FileManager.default.homeDirectoryForCurrentUser
         .appendingPathComponent("Movies", isDirectory: true)
         .appendingPathComponent("OneFPSRecordings", isDirectory: true)
+    private static var ffmpegURL: URL { bundledExecutable("ffmpeg") }
+    private static var ffprobeURL: URL { bundledExecutable("ffprobe") }
 
     private let status: (RecorderState) -> Void
     private var startedAt: Date?
@@ -1421,6 +1423,15 @@ final class OneFPSRecorder: NSObject {
         var outputFilename: String
         var videoAppended: Bool
         var frameCount: Int?
+    }
+
+    private static func bundledExecutable(_ name: String) -> URL {
+        if let resourceURL = Bundle.main.resourceURL?.appendingPathComponent(name),
+           FileManager.default.isExecutableFile(atPath: resourceURL.path) {
+            return resourceURL
+        }
+        return FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".local/bin/\(name)")
     }
 
     init(status: @escaping (RecorderState) -> Void) {
@@ -1727,8 +1738,7 @@ final class OneFPSRecorder: NSObject {
             return
         }
 
-        let ffmpeg = FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent(".local/bin/ffmpeg")
+        let ffmpeg = Self.ffmpegURL
         let process = Process()
         process.executableURL = ffmpeg
         process.arguments = [
@@ -1811,8 +1821,7 @@ final class OneFPSRecorder: NSObject {
             let tempDailyURL = dailyURL.deletingLastPathComponent()
                 .appendingPathComponent(".daily-\(Self.timestamp())-\(UUID().uuidString).mp4")
 
-            let ffmpeg = FileManager.default.homeDirectoryForCurrentUser
-                .appendingPathComponent(".local/bin/ffmpeg")
+            let ffmpeg = Self.ffmpegURL
             let process = Process()
             process.executableURL = ffmpeg
             process.arguments = [
@@ -1871,8 +1880,7 @@ final class OneFPSRecorder: NSObject {
 
     private static func videoFrameCount(_ url: URL) -> Int {
         guard FileManager.default.fileExists(atPath: url.path) else { return 0 }
-        let ffprobe = FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent(".local/bin/ffprobe")
+        let ffprobe = Self.ffprobeURL
         let process = Process()
         let pipe = Pipe()
         process.executableURL = ffprobe
@@ -1971,6 +1979,7 @@ final class OneFPSRecorder: NSObject {
         var urls: [URL] = []
         for case let fileURL as URL in enumerator {
             if fileURL.pathComponents.contains("バックアップ") { continue }
+            if fileURL.pathComponents.contains("提出") { continue }
             if isCanonicalDailyVideo(fileURL) {
                 urls.append(fileURL)
             }
@@ -1990,8 +1999,7 @@ final class OneFPSRecorder: NSObject {
 
         do {
             try concatList.write(to: listURL, atomically: true, encoding: .utf8)
-            let ffmpeg = FileManager.default.homeDirectoryForCurrentUser
-                .appendingPathComponent(".local/bin/ffmpeg")
+            let ffmpeg = Self.ffmpegURL
             let process = Process()
             process.executableURL = ffmpeg
             process.arguments = [
@@ -2323,8 +2331,7 @@ final class OneFPSRecorder: NSObject {
 
         do {
             if metadata?.videoAppended != true {
-                let ffmpeg = FileManager.default.homeDirectoryForCurrentUser
-                    .appendingPathComponent(".local/bin/ffmpeg")
+                let ffmpeg = Self.ffmpegURL
                 let process = Process()
                 process.executableURL = ffmpeg
                 process.arguments = [
@@ -2756,8 +2763,7 @@ final class OneFPSRecorder: NSObject {
             .appendingPathComponent(".repair-\(timestamp())-\(UUID().uuidString).mp4")
         let backupURL = videoURL.deletingLastPathComponent()
             .appendingPathComponent("\(videoURL.deletingPathExtension().lastPathComponent).before-video-reconcile-\(timestamp()).mp4")
-        let ffmpeg = FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent(".local/bin/ffmpeg")
+        let ffmpeg = Self.ffmpegURL
         let filter = "setpts=PTS*\(targetFrames)/\(currentFrames),fps=1,scale=960:600:force_original_aspect_ratio=decrease,pad=960:600:(ow-iw)/2:(oh-ih)/2,setsar=1"
 
         let process = Process()
