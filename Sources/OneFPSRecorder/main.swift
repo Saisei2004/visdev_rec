@@ -697,6 +697,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         case "settings":
             openSettings()
+        case "report":
+            openReportSubmission()
         case "showOverlay":
             RecorderSettings.showOverlay = true
             if recorder.isRecording, let startedAt = recorder.currentStartedAt {
@@ -829,6 +831,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 self?.showAlert(error.localizedDescription)
             }
         }
+        NSApp.setActivationPolicy(.regular)
+        NSApp.activate(ignoringOtherApps: true)
         reportWindowController?.showWindow(nil)
     }
 
@@ -1077,17 +1081,16 @@ final class ReportSubmissionWindowController: NSWindowController, NSWindowDelega
 
     init(onSubmit: @escaping (ReportSubmissionForm) -> Void) {
         self.onSubmit = onSubmit
-        let window = NSPanel(
+        let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 620, height: 430),
-            styleMask: [.titled, .closable, .utilityWindow],
+            styleMask: [.titled, .closable],
             backing: .buffered,
             defer: false
         )
         window.title = "業務報告を提出"
-        window.level = .screenSaver
+        window.level = .floating
         window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         window.hidesOnDeactivate = false
-        window.isFloatingPanel = true
         window.center()
         window.isReleasedWhenClosed = false
         super.init(window: window)
@@ -1108,6 +1111,9 @@ final class ReportSubmissionWindowController: NSWindowController, NSWindowDelega
         statusField.stringValue = RecorderSettings.defaultReportStatus
         messageField.stringValue = RecorderSettings.defaultReportMessage
         super.showWindow(sender)
+        window?.center()
+        NSApp.setActivationPolicy(.regular)
+        NSApp.activate(ignoringOtherApps: true)
         window?.makeKeyAndOrderFront(nil)
         window?.orderFrontRegardless()
     }
@@ -1184,6 +1190,10 @@ final class ReportSubmissionWindowController: NSWindowController, NSWindowDelega
 
     @objc private func cancelPressed() {
         close()
+    }
+
+    func windowWillClose(_ notification: Notification) {
+        NSApp.setActivationPolicy(.accessory)
     }
 
     private func showInlineAlert(_ message: String) {
