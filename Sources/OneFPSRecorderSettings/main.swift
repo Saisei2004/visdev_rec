@@ -6,6 +6,8 @@ enum SharedSettings {
     private static let showOverlayKey = "showRecordingOverlay"
     private static let showPauseOverlayKey = "showPauseOverlay"
     private static let showMenuBarStatusKey = "showMenuBarStatus"
+    private static let compactMenuBarIconKey = "compactMenuBarIcon"
+    private static let showReportMenuKey = "showReportMenu"
     private static let showMonthlyScoreKey = "showMonthlyScore"
     private static let hourlyRateKey = "hourlyRate"
     private static let monthlyGoalKey = "monthlyGoal"
@@ -68,6 +70,16 @@ enum SharedSettings {
             return defaults.bool(forKey: showMenuBarStatusKey)
         }
         set { defaults.set(newValue, forKey: showMenuBarStatusKey) }
+    }
+
+    static var compactMenuBarIcon: Bool {
+        get { defaults.bool(forKey: compactMenuBarIconKey) }
+        set { defaults.set(newValue, forKey: compactMenuBarIconKey) }
+    }
+
+    static var showReportMenu: Bool {
+        get { defaults.bool(forKey: showReportMenuKey) }
+        set { defaults.set(newValue, forKey: showReportMenuKey) }
     }
 
     static var showMonthlyScore: Bool {
@@ -346,6 +358,8 @@ final class SettingsDelegate: NSObject, NSApplicationDelegate {
     private let overlayCheckbox = NSButton(checkboxWithTitle: "録画中パネルを表示する", target: nil, action: nil)
     private let pauseOverlayCheckbox = NSButton(checkboxWithTitle: "一時停止パネルを表示する", target: nil, action: nil)
     private let menuBarStatusCheckbox = NSButton(checkboxWithTitle: "メニューバーに録画状態を表示する", target: nil, action: nil)
+    private let compactMenuBarIconCheckbox = NSButton(checkboxWithTitle: "メニューバーを最小アイコン表示にする", target: nil, action: nil)
+    private let showReportMenuCheckbox = NSButton(checkboxWithTitle: "メニューバーに業務報告を表示する", target: nil, action: nil)
     private let monthlyScoreCheckbox = NSButton(checkboxWithTitle: "月間スコアを表示する", target: nil, action: nil)
     private let hourlyRateField = NSTextField(string: "\(SharedSettings.hourlyRate)")
     private let monthlyGoalField = NSTextField(string: "\(SharedSettings.monthlyGoal)")
@@ -378,7 +392,7 @@ final class SettingsDelegate: NSObject, NSApplicationDelegate {
 
     private func buildWindow() {
         window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 500, height: 330),
+            contentRect: NSRect(x: 0, y: 0, width: 500, height: 358),
             styleMask: [.titled, .closable],
             backing: .buffered,
             defer: false
@@ -387,29 +401,32 @@ final class SettingsDelegate: NSObject, NSApplicationDelegate {
         window.isReleasedWhenClosed = false
         window.delegate = self
 
-        let content = NSView(frame: NSRect(x: 0, y: 0, width: 500, height: 304))
+        let content = NSView(frame: NSRect(x: 0, y: 0, width: 500, height: 332))
         window.contentView = content
 
         let title = NSTextField(labelWithString: "保存名")
         title.font = NSFont.systemFont(ofSize: 13, weight: .semibold)
-        title.frame = NSRect(x: 30, y: 244, width: 80, height: 20)
+        title.frame = NSRect(x: 30, y: 272, width: 80, height: 20)
 
-        nameField.frame = NSRect(x: 130, y: 238, width: 320, height: 28)
+        nameField.frame = NSRect(x: 130, y: 266, width: 320, height: 28)
         nameField.placeholderString = "録画"
 
         let hint = NSTextField(labelWithString: "ファイル名は MMDD_名前.mp4 になります。名前変更時は既存動画も更新します。")
         hint.font = NSFont.systemFont(ofSize: 11)
         hint.textColor = .secondaryLabelColor
-        hint.frame = NSRect(x: 130, y: 210, width: 340, height: 18)
+        hint.frame = NSRect(x: 130, y: 238, width: 340, height: 18)
 
         overlayCheckbox.state = SharedSettings.showOverlay ? .on : .off
-        overlayCheckbox.frame = NSRect(x: 130, y: 178, width: 240, height: 22)
+        overlayCheckbox.frame = NSRect(x: 130, y: 206, width: 240, height: 22)
 
         pauseOverlayCheckbox.state = SharedSettings.showPauseOverlay ? .on : .off
-        pauseOverlayCheckbox.frame = NSRect(x: 130, y: 150, width: 240, height: 22)
+        pauseOverlayCheckbox.frame = NSRect(x: 130, y: 178, width: 240, height: 22)
 
         menuBarStatusCheckbox.state = SharedSettings.showMenuBarStatus ? .on : .off
-        menuBarStatusCheckbox.frame = NSRect(x: 130, y: 122, width: 300, height: 22)
+        menuBarStatusCheckbox.frame = NSRect(x: 130, y: 150, width: 300, height: 22)
+
+        compactMenuBarIconCheckbox.state = SharedSettings.compactMenuBarIcon ? .on : .off
+        compactMenuBarIconCheckbox.frame = NSRect(x: 130, y: 122, width: 300, height: 22)
 
         toggleRecordingButton.target = self
         toggleRecordingButton.action = #selector(toggleRecordingPressed)
@@ -441,6 +458,7 @@ final class SettingsDelegate: NSObject, NSApplicationDelegate {
         content.addSubview(overlayCheckbox)
         content.addSubview(pauseOverlayCheckbox)
         content.addSubview(menuBarStatusCheckbox)
+        content.addSubview(compactMenuBarIconCheckbox)
         content.addSubview(toggleRecordingButton)
         content.addSubview(showPanelButton)
         content.addSubview(advancedButton)
@@ -454,9 +472,11 @@ final class SettingsDelegate: NSObject, NSApplicationDelegate {
         SharedSettings.showOverlay = overlayCheckbox.state == .on
         SharedSettings.showPauseOverlay = pauseOverlayCheckbox.state == .on
         SharedSettings.showMenuBarStatus = menuBarStatusCheckbox.state == .on
+        SharedSettings.compactMenuBarIcon = compactMenuBarIconCheckbox.state == .on
         renameExistingRecordings(to: newName)
         rewriteRecordingLogFileNames(to: newName)
         syncAllDerivedLogs()
+        Self.sendCommand("refreshSettings")
         NSApp.terminate(nil)
     }
 
@@ -482,11 +502,13 @@ final class SettingsDelegate: NSObject, NSApplicationDelegate {
         SharedSettings.showOverlay = overlayCheckbox.state == .on
         SharedSettings.showPauseOverlay = pauseOverlayCheckbox.state == .on
         SharedSettings.showMenuBarStatus = menuBarStatusCheckbox.state == .on
+        SharedSettings.compactMenuBarIcon = compactMenuBarIconCheckbox.state == .on
         renameExistingRecordings(to: newName)
         rewriteRecordingLogFileNames(to: newName)
         if oldName != newName {
             syncAllDerivedLogs()
         }
+        Self.sendCommand("refreshSettings")
     }
 
     private static func sendCommand(_ command: String) {
@@ -514,6 +536,7 @@ final class SettingsDelegate: NSObject, NSApplicationDelegate {
         pauseOnSleepCheckbox.state = SharedSettings.pauseOnSleep ? .on : .off
         pauseOnMouseIdleCheckbox.state = SharedSettings.pauseOnMouseIdle ? .on : .off
         mouseIdleMinutesField.stringValue = "\(SharedSettings.mouseIdleMinutes)"
+        showReportMenuCheckbox.state = SharedSettings.showReportMenu ? .on : .off
         advancedWindow?.center()
         advancedWindow?.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
@@ -521,7 +544,7 @@ final class SettingsDelegate: NSObject, NSApplicationDelegate {
 
     private func buildAdvancedWindow() {
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 500, height: 334),
+            contentRect: NSRect(x: 0, y: 0, width: 500, height: 372),
             styleMask: [.titled, .closable],
             backing: .buffered,
             defer: false
@@ -530,7 +553,7 @@ final class SettingsDelegate: NSObject, NSApplicationDelegate {
         window.isReleasedWhenClosed = false
         advancedWindow = window
 
-        let content = NSView(frame: NSRect(x: 0, y: 0, width: 500, height: 308))
+        let content = NSView(frame: NSRect(x: 0, y: 0, width: 500, height: 346))
         window.contentView = content
 
         let scoreTitle = NSTextField(labelWithString: "月間スコア")
@@ -584,6 +607,9 @@ final class SettingsDelegate: NSObject, NSApplicationDelegate {
         mouseIdleMinutesField.frame = NSRect(x: 390, y: 90, width: 80, height: 28)
         mouseIdleMinutesField.placeholderString = "5"
 
+        showReportMenuCheckbox.state = SharedSettings.showReportMenu ? .on : .off
+        showReportMenuCheckbox.frame = NSRect(x: 130, y: 62, width: 260, height: 22)
+
         reportDefaultsButton.target = self
         reportDefaultsButton.action = #selector(openReportDefaults)
         reportDefaultsButton.bezelStyle = .rounded
@@ -612,6 +638,7 @@ final class SettingsDelegate: NSObject, NSApplicationDelegate {
         content.addSubview(pauseOnMouseIdleCheckbox)
         content.addSubview(idleMinutesLabel)
         content.addSubview(mouseIdleMinutesField)
+        content.addSubview(showReportMenuCheckbox)
         content.addSubview(reportDefaultsButton)
         content.addSubview(closeButton)
         content.addSubview(saveButton)
@@ -625,7 +652,9 @@ final class SettingsDelegate: NSObject, NSApplicationDelegate {
         SharedSettings.pauseOnSleep = pauseOnSleepCheckbox.state == .on
         SharedSettings.pauseOnMouseIdle = pauseOnMouseIdleCheckbox.state == .on
         SharedSettings.mouseIdleMinutes = Int(mouseIdleMinutesField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)) ?? 5
+        SharedSettings.showReportMenu = showReportMenuCheckbox.state == .on
         syncAllDerivedLogs()
+        Self.sendCommand("refreshSettings")
         advancedWindow?.orderOut(nil)
     }
 

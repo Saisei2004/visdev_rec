@@ -8,6 +8,8 @@ enum RecorderSettings {
     private static let showOverlayKey = "showRecordingOverlay"
     private static let showPauseOverlayKey = "showPauseOverlay"
     private static let showMenuBarStatusKey = "showMenuBarStatus"
+    private static let compactMenuBarIconKey = "compactMenuBarIcon"
+    private static let showReportMenuKey = "showReportMenu"
     private static let showMonthlyScoreKey = "showMonthlyScore"
     private static let hourlyRateKey = "hourlyRate"
     private static let monthlyGoalKey = "monthlyGoal"
@@ -76,6 +78,22 @@ enum RecorderSettings {
             return defaults.bool(forKey: showMenuBarStatusKey)
         }
         set { defaults.set(newValue, forKey: showMenuBarStatusKey) }
+    }
+
+    static var compactMenuBarIcon: Bool {
+        get {
+            defaults.synchronize()
+            return defaults.bool(forKey: compactMenuBarIconKey)
+        }
+        set { defaults.set(newValue, forKey: compactMenuBarIconKey) }
+    }
+
+    static var showReportMenu: Bool {
+        get {
+            defaults.synchronize()
+            return defaults.bool(forKey: showReportMenuKey)
+        }
+        set { defaults.set(newValue, forKey: showReportMenuKey) }
     }
 
     static var showMonthlyScore: Bool {
@@ -314,6 +332,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         .appendingPathComponent("Logs", isDirectory: true)
         .appendingPathComponent("1FPS録画.log")
     private var statusItem: NSStatusItem!
+    private var reportMenuItem: NSMenuItem?
     private var overlay: RecordingOverlay!
     private var recorder: OneFPSRecorder!
     private var lastToggleAt = Date.distantPast
@@ -395,7 +414,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func setupStatusItem() {
-        statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+        statusItem = NSStatusBar.system.statusItem(
+            withLength: RecorderSettings.compactMenuBarIcon ? NSStatusItem.squareLength : NSStatusItem.variableLength
+        )
         let menu = NSMenu()
         let toggleItem = NSMenuItem(title: "録画開始", action: #selector(toggleRecording), keyEquivalent: "")
         toggleItem.target = self
@@ -407,6 +428,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         let reportItem = NSMenuItem(title: "業務報告を提出...", action: #selector(openReportSubmission), keyEquivalent: "")
         reportItem.target = self
+        reportItem.isHidden = !RecorderSettings.showReportMenu
+        reportMenuItem = reportItem
         menu.addItem(reportItem)
 
         let settingsItem = NSMenuItem(title: "設定...", action: #selector(openSettings), keyEquivalent: "")
@@ -423,10 +446,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func applyStatus(_ state: RecorderState) {
         guard let button = statusItem.button else { return }
         button.attributedTitle = NSAttributedString(string: "")
+        refreshMenuVisibility()
         switch state {
         case .idle:
-            button.title = RecorderSettings.showMenuBarStatus && isAutomaticallyPaused ? "1FPS 一時停止" : "1FPS"
-            button.contentTintColor = nil
+            setMenuBarDisplay(
+                title: RecorderSettings.showMenuBarStatus && isAutomaticallyPaused ? "1FPS 一時停止" : "1FPS",
+                symbolName: isAutomaticallyPaused ? "pause.circle.fill" : "record.circle",
+                tint: isAutomaticallyPaused ? .systemYellow : nil
+            )
             statusItem.menu?.item(at: 0)?.title = "録画開始"
             statusItem.menu?.item(at: 0)?.isEnabled = true
             if isAutomaticallyPaused, RecorderSettings.showPauseOverlay {
@@ -435,8 +462,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 overlay.hide()
             }
         case .idleSaving:
-            button.title = RecorderSettings.showMenuBarStatus ? "1FPS 保存中" : "1FPS"
-            button.contentTintColor = nil
+            setMenuBarDisplay(
+                title: RecorderSettings.showMenuBarStatus ? "1FPS 保存中" : "1FPS",
+                symbolName: "tray.and.arrow.down.fill",
+                tint: .systemOrange
+            )
             statusItem.menu?.item(at: 0)?.title = "録画開始"
             statusItem.menu?.item(at: 0)?.isEnabled = true
             if isAutomaticallyPaused, RecorderSettings.showPauseOverlay {
@@ -450,10 +480,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let elapsed = Int(Date().timeIntervalSince(startedAt))
             let score = OneFPSRecorder.monthlyScore(includingCurrentStartedAt: startedAt)
             let scoreText = RecorderSettings.showMonthlyScore ? " \(Self.currency(score.earnedYen))" : ""
-            button.title = RecorderSettings.showMenuBarStatus
-                ? String(format: "録画中 1FPS %02d:%02d%@", elapsed / 60, elapsed % 60, scoreText)
-                : "1FPS"
-            button.contentTintColor = nil
+            setMenuBarDisplay(
+                title: RecorderSettings.showMenuBarStatus
+                    ? String(format: "録画中 1FPS %02d:%02d%@", elapsed / 60, elapsed % 60, scoreText)
+                    : "1FPS",
+                symbolName: "record.circle.fill",
+                tint: .systemRed
+            )
             statusItem.menu?.item(at: 0)?.title = "録画停止"
             statusItem.menu?.item(at: 0)?.isEnabled = true
             if RecorderSettings.showOverlay {
@@ -470,8 +503,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 overlay.hide()
             }
         case .encoding:
-            button.title = RecorderSettings.showMenuBarStatus ? "1FPS 保存中" : "1FPS"
-            button.contentTintColor = nil
+            setMenuBarDisplay(
+                title: RecorderSettings.showMenuBarStatus ? "1FPS 保存中" : "1FPS",
+                symbolName: "tray.and.arrow.down.fill",
+                tint: .systemOrange
+            )
             statusItem.menu?.item(at: 0)?.title = "保存中..."
             statusItem.menu?.item(at: 0)?.isEnabled = false
             if isAutomaticallyPaused, RecorderSettings.showPauseOverlay {
@@ -482,12 +518,38 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 overlay.hide()
             }
         case .error(let message):
-            button.title = "1FPS エラー"
-            button.contentTintColor = nil
+            setMenuBarDisplay(title: "1FPS エラー", symbolName: "exclamationmark.circle.fill", tint: .systemRed)
             statusItem.menu?.item(at: 0)?.title = "録画開始"
             statusItem.menu?.item(at: 0)?.isEnabled = true
             overlay.hide()
             showAlert(message)
+        }
+    }
+
+    private func refreshMenuVisibility() {
+        reportMenuItem?.isHidden = !RecorderSettings.showReportMenu
+    }
+
+    private func setMenuBarDisplay(title: String, symbolName: String, tint: NSColor?) {
+        guard let button = statusItem.button else { return }
+        statusItem.length = RecorderSettings.compactMenuBarIcon ? NSStatusItem.squareLength : NSStatusItem.variableLength
+        if RecorderSettings.compactMenuBarIcon {
+            button.title = ""
+            button.imagePosition = .imageOnly
+            if let symbol = NSImage(systemSymbolName: symbolName, accessibilityDescription: title) {
+                symbol.isTemplate = tint == nil
+                button.image = symbol
+            } else {
+                button.image = nil
+                button.title = "●"
+            }
+            button.contentTintColor = tint
+            button.toolTip = title
+        } else {
+            button.image = nil
+            button.title = title
+            button.contentTintColor = nil
+            button.toolTip = nil
         }
     }
 
@@ -602,6 +664,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 applyStatus(.recording(startedAt))
             } else {
                 overlay.showReady(message: "ここから録画できます")
+            }
+        case "refreshSettings":
+            if recorder.isRecording, let startedAt = recorder.currentStartedAt {
+                applyStatus(.recording(startedAt))
+            } else {
+                applyStatus(recorder.isEncoding ? .idleSaving : .idle)
             }
         case "toggle":
             toggleRecording()
