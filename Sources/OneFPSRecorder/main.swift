@@ -27,8 +27,8 @@ enum RecorderSettings {
     private static let defaultReportStatusKey = "defaultReportStatus"
     private static let defaultReportMessageKey = "defaultReportMessage"
     private static let reportTemplatePathKey = "reportTemplatePath"
-    private static let defaultDriveFolderURL = "https://drive.google.com/drive/folders/1W-Vc69ELQ-gtul7VVtQCs7mLMLk2LbIH"
-    private static let defaultVideoDriveFolderURL = "https://drive.google.com/drive/folders/1NjjboZDYCDLAC_OhhPOBj5PmF3Rs9U_x"
+    private static let defaultDriveFolderURL = ""
+    private static let defaultVideoDriveFolderURL = ""
 
     static var recordingName: String {
         get {
@@ -172,9 +172,9 @@ enum RecorderSettings {
     static var reporterName: String {
         get {
             defaults.synchronize()
-            let saved = defaults.string(forKey: reporterNameKey) ?? "馬場幸成"
+            let saved = defaults.string(forKey: reporterNameKey) ?? currentUserDisplayName()
             let trimmed = saved.trimmingCharacters(in: .whitespacesAndNewlines)
-            return trimmed.isEmpty ? "馬場幸成" : trimmed
+            return trimmed.isEmpty ? currentUserDisplayName() : trimmed
         }
         set { defaults.set(newValue.trimmingCharacters(in: .whitespacesAndNewlines), forKey: reporterNameKey) }
     }
@@ -241,6 +241,15 @@ enum RecorderSettings {
         let saved = defaults.string(forKey: key) ?? fallback
         let trimmed = saved.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.isEmpty ? fallback : trimmed
+    }
+
+    private static func currentUserDisplayName() -> String {
+        let fullName = NSFullUserName().trimmingCharacters(in: .whitespacesAndNewlines)
+        if !fullName.isEmpty {
+            return fullName
+        }
+        let loginName = NSUserName().trimmingCharacters(in: .whitespacesAndNewlines)
+        return loginName.isEmpty ? "担当者" : loginName
     }
 
     private static func nextIndex(forKey key: String, modulo: Int) -> Int {
@@ -963,7 +972,7 @@ final class ReportSubmissionWindowController: NSWindowController, NSWindowDelega
             y -= 36
         }
 
-        let destination = NSTextField(labelWithString: "提出先: 松田彩成 Driveフォルダ")
+        let destination = NSTextField(labelWithString: "提出先: 設定したDriveフォルダ。未設定の場合はローカル保存のみ")
         destination.font = NSFont.systemFont(ofSize: 11, weight: .semibold)
         destination.textColor = .secondaryLabelColor
         destination.frame = NSRect(x: 28, y: 78, width: 560, height: 18)

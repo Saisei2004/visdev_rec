@@ -17,7 +17,7 @@ from update_report_docx import regenerate_docx
 
 DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 GOOGLE_DOC_MIME = "application/vnd.google-apps.document"
-DEFAULT_VIDEO_FOLDER_URL = "https://drive.google.com/drive/folders/1NjjboZDYCDLAC_OhhPOBj5PmF3Rs9U_x"
+DEFAULT_VIDEO_FOLDER_URL = ""
 
 
 def parse_drive_id(value):
@@ -258,7 +258,7 @@ def main():
     if not folder_id:
         raise RuntimeError("DriveフォルダIDを取得できませんでした。")
     if args.video and not video_folder_id:
-        raise RuntimeError("動画DriveフォルダIDを取得できませんでした。")
+        video_folder_id = folder_id
 
     with tempfile.TemporaryDirectory() as tmp:
         template_path = Path(tmp) / "drive-template.docx"

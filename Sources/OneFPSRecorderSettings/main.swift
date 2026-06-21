@@ -23,8 +23,8 @@ enum SharedSettings {
     private static let defaultReportStatusKey = "defaultReportStatus"
     private static let defaultReportMessageKey = "defaultReportMessage"
     private static let reportTemplatePathKey = "reportTemplatePath"
-    private static let defaultDriveFolderURL = "https://drive.google.com/drive/folders/1W-Vc69ELQ-gtul7VVtQCs7mLMLk2LbIH"
-    private static let defaultVideoDriveFolderURL = "https://drive.google.com/drive/folders/1NjjboZDYCDLAC_OhhPOBj5PmF3Rs9U_x"
+    private static let defaultDriveFolderURL = ""
+    private static let defaultVideoDriveFolderURL = ""
 
     static var recordingName: String {
         get {
@@ -141,7 +141,7 @@ enum SharedSettings {
     }
 
     static var reporterName: String {
-        get { savedText(forKey: reporterNameKey, fallback: "馬場幸成") }
+        get { savedText(forKey: reporterNameKey, fallback: currentUserDisplayName()) }
         set { defaults.set(newValue.trimmingCharacters(in: .whitespacesAndNewlines), forKey: reporterNameKey) }
     }
 
@@ -205,6 +205,15 @@ enum SharedSettings {
         let saved = defaults.string(forKey: key) ?? fallback
         let trimmed = saved.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.isEmpty ? fallback : trimmed
+    }
+
+    private static func currentUserDisplayName() -> String {
+        let fullName = NSFullUserName().trimmingCharacters(in: .whitespacesAndNewlines)
+        if !fullName.isEmpty {
+            return fullName
+        }
+        let loginName = NSUserName().trimmingCharacters(in: .whitespacesAndNewlines)
+        return loginName.isEmpty ? "担当者" : loginName
     }
 
     static func sanitizedRecordingName(_ name: String) -> String {
