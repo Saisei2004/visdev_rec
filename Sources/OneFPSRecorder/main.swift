@@ -1441,6 +1441,7 @@ final class OneFPSRecorder: NSObject {
 
     func start() async throws {
         guard !isRecording else { return }
+        try Self.ensureScreenCaptureAccess()
         try FileManager.default.createDirectory(at: Self.recordingsDirectory, withIntermediateDirectories: true)
 
         let now = Date()
@@ -1452,6 +1453,22 @@ final class OneFPSRecorder: NSObject {
         status(.recording(startedAt ?? Date()))
         startDisplayTimer()
         startCaptureTimer()
+    }
+
+    private static func ensureScreenCaptureAccess() throws {
+        if CGPreflightScreenCaptureAccess() {
+            return
+        }
+        if CGRequestScreenCaptureAccess(), CGPreflightScreenCaptureAccess() {
+            return
+        }
+        throw NSError(
+            domain: "OneFPSRecorder",
+            code: 10,
+            userInfo: [
+                NSLocalizedDescriptionKey: "画面収録の許可が必要です。システム設定 > プライバシーとセキュリティ > 画面とシステムオーディオ収録 で OneFPSRecorder を許可してから、もう一度録画開始してください。"
+            ]
+        )
     }
 
     func stop() {
