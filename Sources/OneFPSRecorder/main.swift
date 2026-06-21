@@ -73,7 +73,7 @@ enum RecorderSettings {
         get {
             defaults.synchronize()
             if defaults.object(forKey: showMenuBarStatusKey) == nil {
-                return true
+                return false
             }
             return defaults.bool(forKey: showMenuBarStatusKey)
         }
@@ -440,7 +440,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func setupStatusItem() {
         statusItem = NSStatusBar.system.statusItem(
-            withLength: RecorderSettings.compactMenuBarIcon ? NSStatusItem.squareLength : NSStatusItem.variableLength
+            withLength: NSStatusItem.squareLength
         )
         let menu = NSMenu()
         let toggleItem = NSMenuItem(title: "録画開始", action: #selector(toggleRecording), keyEquivalent: "")
@@ -471,7 +471,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         switch state {
         case .idle:
             setMenuBarDisplay(
-                title: RecorderSettings.showMenuBarStatus && isAutomaticallyPaused ? "1FPS 一時停止" : "1FPS",
+                title: isAutomaticallyPaused ? "一時停止" : "1FPS",
                 symbolName: isAutomaticallyPaused ? "pause.circle.fill" : "record.circle",
                 tint: isAutomaticallyPaused ? .systemYellow : nil
             )
@@ -486,7 +486,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         case .idleSaving:
             setMenuBarDisplay(
-                title: RecorderSettings.showMenuBarStatus ? "1FPS 保存中" : "1FPS",
+                title: "保存中",
                 symbolName: "tray.and.arrow.down.fill",
                 tint: .systemOrange
             )
@@ -504,9 +504,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let score = OneFPSRecorder.monthlyScore(includingCurrentStartedAt: startedAt)
             let scoreText = RecorderSettings.showMonthlyScore ? " \(Self.currency(score.earnedYen))" : ""
             setMenuBarDisplay(
-                title: RecorderSettings.showMenuBarStatus
-                    ? String(format: "録画中 1FPS %02d:%02d%@", elapsed / 60, elapsed % 60, scoreText)
-                    : "1FPS",
+                title: String(format: "%02d:%02d%@", elapsed / 60, elapsed % 60, scoreText),
                 symbolName: "record.circle.fill",
                 tint: .systemRed
             )
@@ -527,7 +525,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         case .encoding:
             setMenuBarDisplay(
-                title: RecorderSettings.showMenuBarStatus ? "1FPS 保存中" : "1FPS",
+                title: "保存中",
                 symbolName: "tray.and.arrow.down.fill",
                 tint: .systemOrange
             )
@@ -541,7 +539,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 overlay.hide()
             }
         case .error(let message):
-            setMenuBarDisplay(title: "1FPS エラー", symbolName: "exclamationmark.circle.fill", tint: .systemRed)
+            setMenuBarDisplay(title: "エラー", symbolName: "exclamationmark.circle.fill", tint: .systemRed)
             statusItem.menu?.item(at: 0)?.title = "録画開始"
             statusItem.menu?.item(at: 0)?.isEnabled = true
             overlay.hide()
@@ -555,8 +553,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func setMenuBarDisplay(title: String, symbolName: String, tint: NSColor?) {
         guard let button = statusItem.button else { return }
-        statusItem.length = RecorderSettings.compactMenuBarIcon ? NSStatusItem.squareLength : NSStatusItem.variableLength
-        if RecorderSettings.compactMenuBarIcon {
+        let showsText = RecorderSettings.showMenuBarStatus
+            && !RecorderSettings.compactMenuBarIcon
+            && title.contains(":")
+        statusItem.length = showsText ? NSStatusItem.variableLength : NSStatusItem.squareLength
+        if !showsText {
             button.title = ""
             button.imagePosition = .imageOnly
             if let symbol = adaptiveMenuBarSymbol(symbolName: symbolName, accessibilityDescription: title) {
@@ -574,7 +575,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 button.image = nil
             }
             button.imagePosition = .imageLeading
-            button.title = ""
+            button.title = title
             button.contentTintColor = nil
             button.toolTip = title
         }
