@@ -461,10 +461,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         settingsItem.target = self
         menu.addItem(settingsItem)
 
-        menu.addItem(.separator())
-        let quitItem = NSMenuItem(title: "終了", action: #selector(quit), keyEquivalent: "q")
-        quitItem.target = self
-        menu.addItem(quitItem)
         statusItem.menu = menu
     }
 
@@ -572,10 +568,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             button.contentTintColor = nil
             button.toolTip = title
         } else {
-            button.image = nil
-            button.title = title
+            if let symbol = adaptiveMenuBarSymbol(symbolName: symbolName, accessibilityDescription: title) {
+                button.image = symbol
+            } else {
+                button.image = nil
+            }
+            button.imagePosition = .imageLeading
+            button.title = title == "1FPS" ? "" : title
             button.contentTintColor = nil
-            button.toolTip = nil
+            button.toolTip = title
         }
     }
 
@@ -699,6 +700,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             openSettings()
         case "report":
             openReportSubmission()
+        case "quit":
+            quit()
         case "showOverlay":
             RecorderSettings.showOverlay = true
             if recorder.isRecording, let startedAt = recorder.currentStartedAt {

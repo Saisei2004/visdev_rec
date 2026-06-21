@@ -372,6 +372,7 @@ final class SettingsDelegate: NSObject, NSApplicationDelegate {
     private let advancedButton = NSButton(title: "詳細設定...", target: nil, action: nil)
     private let toggleRecordingButton = NSButton(title: "録画開始/停止", target: nil, action: nil)
     private let showPanelButton = NSButton(title: "パネルを今すぐ表示", target: nil, action: nil)
+    private let quitAppButton = NSButton(title: "アプリを完全終了", target: nil, action: nil)
 
     private func bundledExecutable(_ name: String) -> URL {
         if let resourceURL = Bundle.main.resourceURL?.appendingPathComponent(name),
@@ -467,6 +468,11 @@ final class SettingsDelegate: NSObject, NSApplicationDelegate {
         advancedButton.bezelStyle = .rounded
         advancedButton.frame = NSRect(x: 30, y: 22, width: 110, height: 30)
 
+        quitAppButton.target = self
+        quitAppButton.action = #selector(quitAppPressed)
+        quitAppButton.bezelStyle = .rounded
+        quitAppButton.frame = NSRect(x: 150, y: 22, width: 140, height: 30)
+
         let closeButton = NSButton(title: "閉じる", target: self, action: #selector(closePressed))
         closeButton.bezelStyle = .rounded
         closeButton.frame = NSRect(x: 308, y: 22, width: 76, height: 30)
@@ -486,6 +492,7 @@ final class SettingsDelegate: NSObject, NSApplicationDelegate {
         content.addSubview(toggleRecordingButton)
         content.addSubview(showPanelButton)
         content.addSubview(advancedButton)
+        content.addSubview(quitAppButton)
         content.addSubview(closeButton)
         content.addSubview(saveButton)
     }
@@ -517,6 +524,11 @@ final class SettingsDelegate: NSObject, NSApplicationDelegate {
         SharedSettings.showOverlay = true
         overlayCheckbox.state = .on
         Self.sendCommand("showOverlay")
+    }
+
+    @objc private func quitAppPressed() {
+        Self.sendCommand("quit")
+        NSApp.terminate(nil)
     }
 
     private func saveCurrentSimpleSettings() {
