@@ -5,8 +5,9 @@ enum SharedSettings {
     private static let recordingNameKey = "recordingName"
     private static let showOverlayKey = "showRecordingOverlay"
     private static let showPauseOverlayKey = "showPauseOverlay"
-    private static let showMenuBarStatusKey = "showMenuBarStatus"
-    private static let compactMenuBarIconKey = "compactMenuBarIcon"
+    private static let showMenuBarTimeKey = "showMenuBarTime"
+    private static let showMenuBarScoreKey = "showMenuBarScore"
+    private static let legacyShowMenuBarStatusKey = "showMenuBarStatus"
     private static let showReportMenuKey = "showReportMenu"
     private static let showMonthlyScoreKey = "showMonthlyScore"
     private static let hourlyRateKey = "hourlyRate"
@@ -62,19 +63,24 @@ enum SharedSettings {
         }
     }
 
-    static var showMenuBarStatus: Bool {
+    static var showMenuBarTime: Bool {
         get {
-            if defaults.object(forKey: showMenuBarStatusKey) == nil {
-                return false
+            if defaults.object(forKey: showMenuBarTimeKey) != nil {
+                return defaults.bool(forKey: showMenuBarTimeKey)
             }
-            return defaults.bool(forKey: showMenuBarStatusKey)
+            return defaults.bool(forKey: legacyShowMenuBarStatusKey)
         }
-        set { defaults.set(newValue, forKey: showMenuBarStatusKey) }
+        set { defaults.set(newValue, forKey: showMenuBarTimeKey) }
     }
 
-    static var compactMenuBarIcon: Bool {
-        get { defaults.bool(forKey: compactMenuBarIconKey) }
-        set { defaults.set(newValue, forKey: compactMenuBarIconKey) }
+    static var showMenuBarScore: Bool {
+        get {
+            if defaults.object(forKey: showMenuBarScoreKey) != nil {
+                return defaults.bool(forKey: showMenuBarScoreKey)
+            }
+            return defaults.bool(forKey: legacyShowMenuBarStatusKey)
+        }
+        set { defaults.set(newValue, forKey: showMenuBarScoreKey) }
     }
 
     static var showReportMenu: Bool {
@@ -357,8 +363,8 @@ final class SettingsDelegate: NSObject, NSApplicationDelegate {
     private let nameField = NSTextField(string: SharedSettings.recordingName)
     private let overlayCheckbox = NSButton(checkboxWithTitle: "録画中パネルを表示する", target: nil, action: nil)
     private let pauseOverlayCheckbox = NSButton(checkboxWithTitle: "一時停止パネルを表示する", target: nil, action: nil)
-    private let menuBarStatusCheckbox = NSButton(checkboxWithTitle: "メニューバーに時間・スコアを表示する", target: nil, action: nil)
-    private let compactMenuBarIconCheckbox = NSButton(checkboxWithTitle: "メニューバーを最小アイコン表示にする", target: nil, action: nil)
+    private let menuBarTimeCheckbox = NSButton(checkboxWithTitle: "メニューバーに時間を表示する", target: nil, action: nil)
+    private let menuBarScoreCheckbox = NSButton(checkboxWithTitle: "メニューバーにスコアを表示する", target: nil, action: nil)
     private let showReportMenuCheckbox = NSButton(checkboxWithTitle: "メニューバーに業務報告を表示する", target: nil, action: nil)
     private let monthlyScoreCheckbox = NSButton(checkboxWithTitle: "月間スコアを表示する", target: nil, action: nil)
     private let hourlyRateField = NSTextField(string: "\(SharedSettings.hourlyRate)")
@@ -542,8 +548,8 @@ final class SettingsDelegate: NSObject, NSApplicationDelegate {
         }
         overlayCheckbox.state = SharedSettings.showOverlay ? .on : .off
         pauseOverlayCheckbox.state = SharedSettings.showPauseOverlay ? .on : .off
-        menuBarStatusCheckbox.state = SharedSettings.showMenuBarStatus ? .on : .off
-        compactMenuBarIconCheckbox.state = SharedSettings.compactMenuBarIcon ? .on : .off
+        menuBarTimeCheckbox.state = SharedSettings.showMenuBarTime ? .on : .off
+        menuBarScoreCheckbox.state = SharedSettings.showMenuBarScore ? .on : .off
         monthlyScoreCheckbox.state = SharedSettings.showMonthlyScore ? .on : .off
         hourlyRateField.stringValue = "\(SharedSettings.hourlyRate)"
         monthlyGoalField.stringValue = "\(SharedSettings.monthlyGoal)"
@@ -581,13 +587,13 @@ final class SettingsDelegate: NSObject, NSApplicationDelegate {
         pauseOverlayCheckbox.state = SharedSettings.showPauseOverlay ? .on : .off
         pauseOverlayCheckbox.frame = NSRect(x: 150, y: 422, width: 240, height: 22)
 
-        menuBarStatusCheckbox.state = SharedSettings.showMenuBarStatus ? .on : .off
-        menuBarStatusCheckbox.frame = NSRect(x: 150, y: 394, width: 280, height: 22)
+        menuBarTimeCheckbox.state = SharedSettings.showMenuBarTime ? .on : .off
+        menuBarTimeCheckbox.frame = NSRect(x: 150, y: 394, width: 280, height: 22)
 
-        compactMenuBarIconCheckbox.state = SharedSettings.compactMenuBarIcon ? .on : .off
-        compactMenuBarIconCheckbox.frame = NSRect(x: 150, y: 366, width: 280, height: 22)
+        menuBarScoreCheckbox.state = SharedSettings.showMenuBarScore ? .on : .off
+        menuBarScoreCheckbox.frame = NSRect(x: 150, y: 366, width: 280, height: 22)
 
-        let displayHint = NSTextField(labelWithString: "通常はアイコンのみ。必要な時だけ録画時間と月間スコアを横に出せます。")
+        let displayHint = NSTextField(labelWithString: "録画中だけ、選んだ項目をアイコン横に表示します。両方OFFなら常にアイコンのみです。")
         displayHint.font = NSFont.systemFont(ofSize: 11)
         displayHint.textColor = .secondaryLabelColor
         displayHint.frame = NSRect(x: 150, y: 340, width: 360, height: 18)
@@ -667,8 +673,8 @@ final class SettingsDelegate: NSObject, NSApplicationDelegate {
         content.addSubview(displayTitle)
         content.addSubview(overlayCheckbox)
         content.addSubview(pauseOverlayCheckbox)
-        content.addSubview(menuBarStatusCheckbox)
-        content.addSubview(compactMenuBarIconCheckbox)
+        content.addSubview(menuBarTimeCheckbox)
+        content.addSubview(menuBarScoreCheckbox)
         content.addSubview(displayHint)
         content.addSubview(scoreTitle)
         content.addSubview(monthlyScoreCheckbox)
@@ -694,8 +700,8 @@ final class SettingsDelegate: NSObject, NSApplicationDelegate {
     @objc private func saveAdvancedPressed() {
         SharedSettings.showOverlay = overlayCheckbox.state == .on
         SharedSettings.showPauseOverlay = pauseOverlayCheckbox.state == .on
-        SharedSettings.showMenuBarStatus = menuBarStatusCheckbox.state == .on
-        SharedSettings.compactMenuBarIcon = compactMenuBarIconCheckbox.state == .on
+        SharedSettings.showMenuBarTime = menuBarTimeCheckbox.state == .on
+        SharedSettings.showMenuBarScore = menuBarScoreCheckbox.state == .on
         SharedSettings.showMonthlyScore = monthlyScoreCheckbox.state == .on
         SharedSettings.hourlyRate = Int(hourlyRateField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)) ?? 2000
         SharedSettings.monthlyGoal = Int(monthlyGoalField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)) ?? 100000

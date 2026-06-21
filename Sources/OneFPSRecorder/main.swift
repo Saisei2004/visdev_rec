@@ -7,8 +7,9 @@ enum RecorderSettings {
     private static let recordingNameKey = "recordingName"
     private static let showOverlayKey = "showRecordingOverlay"
     private static let showPauseOverlayKey = "showPauseOverlay"
-    private static let showMenuBarStatusKey = "showMenuBarStatus"
-    private static let compactMenuBarIconKey = "compactMenuBarIcon"
+    private static let showMenuBarTimeKey = "showMenuBarTime"
+    private static let showMenuBarScoreKey = "showMenuBarScore"
+    private static let legacyShowMenuBarStatusKey = "showMenuBarStatus"
     private static let showReportMenuKey = "showReportMenu"
     private static let showMonthlyScoreKey = "showMonthlyScore"
     private static let hourlyRateKey = "hourlyRate"
@@ -69,23 +70,26 @@ enum RecorderSettings {
         }
     }
 
-    static var showMenuBarStatus: Bool {
+    static var showMenuBarTime: Bool {
         get {
             defaults.synchronize()
-            if defaults.object(forKey: showMenuBarStatusKey) == nil {
-                return false
+            if defaults.object(forKey: showMenuBarTimeKey) != nil {
+                return defaults.bool(forKey: showMenuBarTimeKey)
             }
-            return defaults.bool(forKey: showMenuBarStatusKey)
+            return defaults.bool(forKey: legacyShowMenuBarStatusKey)
         }
-        set { defaults.set(newValue, forKey: showMenuBarStatusKey) }
+        set { defaults.set(newValue, forKey: showMenuBarTimeKey) }
     }
 
-    static var compactMenuBarIcon: Bool {
+    static var showMenuBarScore: Bool {
         get {
             defaults.synchronize()
-            return defaults.bool(forKey: compactMenuBarIconKey)
+            if defaults.object(forKey: showMenuBarScoreKey) != nil {
+                return defaults.bool(forKey: showMenuBarScoreKey)
+            }
+            return defaults.bool(forKey: legacyShowMenuBarStatusKey)
         }
-        set { defaults.set(newValue, forKey: compactMenuBarIconKey) }
+        set { defaults.set(newValue, forKey: showMenuBarScoreKey) }
     }
 
     static var showReportMenu: Bool {
@@ -502,9 +506,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         case .recording(let startedAt):
             let elapsed = Int(Date().timeIntervalSince(startedAt))
             let score = OneFPSRecorder.monthlyScore(includingCurrentStartedAt: startedAt)
-            let scoreText = RecorderSettings.showMonthlyScore ? " \(Self.currency(score.earnedYen))" : ""
+            let titleParts = menuBarRecordingTitleParts(elapsed: elapsed, scoreYen: score.earnedYen)
             setMenuBarDisplay(
-                title: String(format: "%02d:%02d%@", elapsed / 60, elapsed % 60, scoreText),
+                title: titleParts.isEmpty ? "録画中" : titleParts.joined(separator: " "),
                 symbolName: "record.circle.fill",
                 tint: .systemRed
             )
@@ -553,9 +557,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func setMenuBarDisplay(title: String, symbolName: String, tint: NSColor?) {
         guard let button = statusItem.button else { return }
-        let showsText = RecorderSettings.showMenuBarStatus
-            && !RecorderSettings.compactMenuBarIcon
-            && title.contains(":")
+        let showsText = title.contains(":") || title.contains("¥")
         statusItem.length = showsText ? NSStatusItem.variableLength : NSStatusItem.squareLength
         if !showsText {
             button.title = ""
@@ -579,6 +581,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             button.contentTintColor = nil
             button.toolTip = title
         }
+    }
+
+    private func menuBarRecordingTitleParts(elapsed: Int, scoreYen: Int) -> [String] {
+        var parts: [String] = []
+        if RecorderSettings.showMenuBarTime {
+            parts.append(String(format: "%02d:%02d", elapsed / 60, elapsed % 60))
+        }
+        if RecorderSettings.showMenuBarScore {
+            parts.append(Self.currency(scoreYen))
+        }
+        return parts
     }
 
     private func adaptiveMenuBarSymbol(symbolName: String, accessibilityDescription: String) -> NSImage? {
