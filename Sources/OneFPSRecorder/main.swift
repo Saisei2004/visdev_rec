@@ -349,6 +349,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         .appendingPathComponent("1FPS録画.log")
     private var statusItem: NSStatusItem?
     private var reportMenuItem: NSMenuItem?
+    private var pauseStopMenuItem: NSMenuItem?
     private var overlay: RecordingOverlay!
     private var recorder: OneFPSRecorder!
     private var lastToggleAt = Date.distantPast
@@ -400,6 +401,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             },
             resumeAction: { [weak self] in
                 self?.resumeRecordingFromPauseOverlay()
+            },
+            stopPausedAction: { [weak self] in
+                self?.stopAutomaticPauseFromOverlay()
             }
         )
         setupCommandNotifications()
@@ -469,6 +473,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             NSStatusBar.system.removeStatusItem(statusItem)
             self.statusItem = nil
             reportMenuItem = nil
+            pauseStopMenuItem = nil
         }
     }
 
@@ -478,6 +483,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let toggleItem = NSMenuItem(title: "録画開始", action: #selector(toggleRecording), keyEquivalent: "")
         toggleItem.target = self
         menu.addItem(toggleItem)
+
+        let pauseStopItem = NSMenuItem(title: "一時停止を終了", action: #selector(stopAutomaticPauseFromMenu), keyEquivalent: "")
+        pauseStopItem.target = self
+        pauseStopItem.isHidden = true
+        pauseStopMenuItem = pauseStopItem
+        menu.addItem(pauseStopItem)
 
         let folderItem = NSMenuItem(title: "保存フォルダを開く", action: #selector(openFolder), keyEquivalent: "")
         folderItem.target = self
@@ -508,8 +519,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 symbolName: isAutomaticallyPaused ? "pause.circle.fill" : "record.circle",
                 tint: isAutomaticallyPaused ? .systemYellow : nil
             )
-            statusItem?.menu?.item(at: 0)?.title = "録画開始"
+            statusItem?.menu?.item(at: 0)?.title = isAutomaticallyPaused ? "録画再開" : "録画開始"
             statusItem?.menu?.item(at: 0)?.isEnabled = true
+            pauseStopMenuItem?.isHidden = !isAutomaticallyPaused
+            pauseStopMenuItem?.isEnabled = isAutomaticallyPaused
             if isAutomaticallyPaused, RecorderSettings.showPauseOverlay {
                 overlay.showPaused(message: automaticPauseMessage)
             } else if (manualReadyOverlayVisible || !RecorderSettings.showMenuBarIcon), RecorderSettings.showOverlay {
@@ -525,6 +538,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             )
             statusItem?.menu?.item(at: 0)?.title = "録画開始"
             statusItem?.menu?.item(at: 0)?.isEnabled = true
+            pauseStopMenuItem?.isHidden = true
             if isAutomaticallyPaused, RecorderSettings.showPauseOverlay {
                 overlay.showSaving(message: "一時停止を保存中")
             } else if RecorderSettings.showOverlay {
@@ -543,6 +557,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             )
             statusItem?.menu?.item(at: 0)?.title = "録画停止"
             statusItem?.menu?.item(at: 0)?.isEnabled = true
+            pauseStopMenuItem?.isHidden = true
             if RecorderSettings.showOverlay {
                 overlay.showRecording(
                     elapsedSeconds: elapsed,
@@ -564,6 +579,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             )
             statusItem?.menu?.item(at: 0)?.title = "保存中..."
             statusItem?.menu?.item(at: 0)?.isEnabled = false
+            pauseStopMenuItem?.isHidden = true
             if isAutomaticallyPaused, RecorderSettings.showPauseOverlay {
                 overlay.showSaving(message: "一時停止を保存中")
             } else if RecorderSettings.showOverlay {
@@ -575,6 +591,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             setMenuBarDisplay(title: "エラー", symbolName: "exclamationmark.circle.fill", tint: .systemRed)
             statusItem?.menu?.item(at: 0)?.title = "録画開始"
             statusItem?.menu?.item(at: 0)?.isEnabled = true
+            pauseStopMenuItem?.isHidden = true
             overlay.hide()
             showAlert(message)
         }
@@ -710,6 +727,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         startRecordingAfterAutomaticPause()
     }
 
+    private func stopAutomaticPauseFromOverlay() {
+        guard isAutomaticallyPaused else { return }
+        log("Pause overlay stop requested")
+        manualReadyOverlayVisible = false
+        autoPausedBySleep = false
+        autoPausedByMouseIdle = false
+        overlayMessage = Self.stopMessage()
+        if recorder.isRecording {
+            recorder.stop()
+        } else {
+            applyStatus(recorder.isEncoding ? .idleSaving : .idle)
+        }
+    }
+
     private var isAutomaticallyPaused: Bool {
         autoPausedBySleep || autoPausedByMouseIdle
     }
@@ -734,6 +765,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         case "stop":
             if recorder.isRecording {
                 toggleRecording()
+            } else if isAutomaticallyPaused {
+                stopAutomaticPauseFromOverlay()
             }
         case "flush":
             if recorder.isRecording {
@@ -747,7 +780,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             quit()
         case "showOverlay":
             RecorderSettings.showOverlay = true
-            if recorder.isRecording, let startedAt = recorder.currentStartedAt {
+            if isAutomaticallyPaused, RecorderSettings.showPauseOverlay {
+                manualReadyOverlayVisible = false
+                overlay.showPaused(message: automaticPauseMessage)
+                overlay.revealOnMainDisplay()
+            } else if recorder.isRecording, let startedAt = recorder.currentStartedAt {
                 manualReadyOverlayVisible = false
                 applyStatus(.recording(startedAt))
                 overlay.revealOnMainDisplay()
@@ -767,6 +804,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         default:
             break
         }
+    }
+
+    @objc private func stopAutomaticPauseFromMenu() {
+        stopAutomaticPauseFromOverlay()
     }
 
     private func setupAutomaticPauseHandling() {
@@ -1373,9 +1414,11 @@ final class RecordingOverlay {
     private let messageLabel = DraggableLabel(labelWithString: "")
     private let statusDot = DraggableDotView(frame: NSRect(x: 0, y: 0, width: 9, height: 9))
     private let stopButton = NSButton(title: "停止", target: nil, action: nil)
+    private let secondaryStopButton = NSButton(title: "停止", target: nil, action: nil)
     private let startAction: () -> Void
     private let stopAction: () -> Void
     private let resumeAction: () -> Void
+    private let stopPausedAction: () -> Void
     private var buttonMode: ButtonMode = .stop
     private var glowTimer: Timer?
     private var glowHue: CGFloat = 0
@@ -1386,10 +1429,16 @@ final class RecordingOverlay {
         case resume
     }
 
-    init(startAction: @escaping () -> Void, stopAction: @escaping () -> Void, resumeAction: @escaping () -> Void) {
+    init(
+        startAction: @escaping () -> Void,
+        stopAction: @escaping () -> Void,
+        resumeAction: @escaping () -> Void,
+        stopPausedAction: @escaping () -> Void
+    ) {
         self.startAction = startAction
         self.stopAction = stopAction
         self.resumeAction = resumeAction
+        self.stopPausedAction = stopPausedAction
 
         panel = NSPanel(
             contentRect: NSRect(x: 0, y: 0, width: 336, height: 76),
@@ -1445,11 +1494,20 @@ final class RecordingOverlay {
         stopButton.contentTintColor = .systemRed
         stopButton.setButtonType(.momentaryPushIn)
 
+        secondaryStopButton.target = self
+        secondaryStopButton.action = #selector(secondaryStopPressed)
+        secondaryStopButton.bezelStyle = .rounded
+        secondaryStopButton.font = NSFont.systemFont(ofSize: 11, weight: .semibold)
+        secondaryStopButton.contentTintColor = .systemRed
+        secondaryStopButton.setButtonType(.momentaryPushIn)
+        secondaryStopButton.isHidden = true
+
         root.addSubview(statusDot)
         root.addSubview(titleLabel)
         root.addSubview(scoreLabel)
         root.addSubview(messageLabel)
         root.addSubview(stopButton)
+        root.addSubview(secondaryStopButton)
         panel.contentView = root
         layoutSubviews()
     }
@@ -1464,6 +1522,7 @@ final class RecordingOverlay {
         stopButton.isEnabled = true
         stopButton.title = "開始"
         stopButton.contentTintColor = .systemBlue
+        secondaryStopButton.isHidden = true
         buttonMode = .start
         setGlowEnabled(false)
         show()
@@ -1479,6 +1538,7 @@ final class RecordingOverlay {
         stopButton.isEnabled = true
         stopButton.title = "停止"
         stopButton.contentTintColor = .systemRed
+        secondaryStopButton.isHidden = true
         buttonMode = .stop
         setGlowEnabled(glow)
         show()
@@ -1494,6 +1554,7 @@ final class RecordingOverlay {
         stopButton.isEnabled = false
         stopButton.title = "..."
         stopButton.contentTintColor = .systemOrange
+        secondaryStopButton.isHidden = true
         buttonMode = .stop
         setGlowEnabled(false)
         show()
@@ -1509,6 +1570,10 @@ final class RecordingOverlay {
         stopButton.isEnabled = true
         stopButton.title = "再開"
         stopButton.contentTintColor = .systemBlue
+        secondaryStopButton.isHidden = false
+        secondaryStopButton.isEnabled = true
+        secondaryStopButton.title = "停止"
+        secondaryStopButton.contentTintColor = .systemRed
         buttonMode = .resume
         setGlowEnabled(false)
         show()
@@ -1540,6 +1605,7 @@ final class RecordingOverlay {
         scoreLabel.frame = NSRect(x: 154, y: 44, width: 104, height: 18)
         messageLabel.frame = NSRect(x: 16, y: 16, width: 248, height: 18)
         stopButton.frame = NSRect(x: 274, y: 41, width: 48, height: 26)
+        secondaryStopButton.frame = NSRect(x: 216, y: 41, width: 48, height: 26)
     }
 
     private func setGlowEnabled(_ enabled: Bool) {
@@ -1619,6 +1685,11 @@ final class RecordingOverlay {
         case .resume:
             resumeAction()
         }
+    }
+
+    @objc private func secondaryStopPressed() {
+        saveCurrentOrigin()
+        stopPausedAction()
     }
 }
 
