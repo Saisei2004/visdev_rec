@@ -370,7 +370,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         })
         OneFPSRecorder.migrateRecordingsDirectory()
-        OneFPSRecorder.recoverOrphanedFrameDirectories()
+        let recoveryReport = OneFPSRecorder.recoverInterruptedRecordingState()
         OneFPSRecorder.migrateSavedTextFileNames()
         OneFPSRecorder.migrateToDailyDirectories()
         OneFPSRecorder.renameExistingRecordings(from: "", to: RecorderSettings.recordingName)
@@ -394,6 +394,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         setupAutomaticPauseHandling()
         applyStatus(.idle)
         log("OneFPSRecorder launched")
+        if recoveryReport.hasEvents {
+            log(recoveryReport.logSummary)
+            DispatchQueue.main.async { [weak self] in
+                self?.showAlert(recoveryReport.userMessage)
+            }
+        }
         if !launchedInBackground {
             DispatchQueue.main.async { [weak self] in
                 self?.openSettings()
@@ -1654,6 +1660,44 @@ final class OneFPSRecorder: NSObject {
         var frameCount: Int?
     }
 
+    struct RecoveryReport {
+        var restoredDailyBackups = 0
+        var removedInterruptedDailyFiles = 0
+        var recoveredSegments = 0
+        var removedEmptyFrameDirectories = 0
+        var failedFrameDirectories: [String] = []
+
+        var hasEvents: Bool {
+            restoredDailyBackups > 0
+                || removedInterruptedDailyFiles > 0
+                || recoveredSegments > 0
+                || removedEmptyFrameDirectories > 0
+                || !failedFrameDirectories.isEmpty
+        }
+
+        var logSummary: String {
+            "Recovery restoredDailyBackups=\(restoredDailyBackups) removedInterruptedDailyFiles=\(removedInterruptedDailyFiles) recoveredSegments=\(recoveredSegments) removedEmptyFrameDirectories=\(removedEmptyFrameDirectories) failedFrameDirectories=\(failedFrameDirectories.count)"
+        }
+
+        var userMessage: String {
+            var lines: [String] = []
+            if recoveredSegments > 0 {
+                lines.append("保存途中だった録画を \(recoveredSegments) 件、自動復旧しました。")
+            }
+            if restoredDailyBackups > 0 || removedInterruptedDailyFiles > 0 {
+                lines.append("保存途中に残った一時ファイルを整理しました。")
+            }
+            if removedEmptyFrameDirectories > 0 {
+                lines.append("映像が入っていない一時フォルダを \(removedEmptyFrameDirectories) 件整理しました。")
+            }
+            if !failedFrameDirectories.isEmpty {
+                lines.append("まだ復旧できていない録画が \(failedFrameDirectories.count) 件あります。次回起動時にも自動で再試行します。")
+                lines.append("場所: \(failedFrameDirectories.prefix(3).joined(separator: "\n"))")
+            }
+            return lines.joined(separator: "\n")
+        }
+    }
+
     private static func bundledExecutable(_ name: String) -> URL {
         if let resourceURL = Bundle.main.resourceURL?.appendingPathComponent(name),
            FileManager.default.isExecutableFile(atPath: resourceURL.path) {
@@ -1953,9 +1997,11 @@ final class OneFPSRecorder: NSObject {
         encodingJobCount = max(0, encodingJobCount - 1)
         isEncoding = encodingJobCount > 0
         if let errorMessage {
-            stopDisplayTimer()
-            cleanupAll()
-            status(.error(errorMessage))
+            if isRecording {
+                status(.recording(startedAt ?? Date()))
+            } else {
+                status(.error("\(errorMessage)\n一時フレームは残しています。次回起動時に自動復旧を再試行します。"))
+            }
             return
         }
         if isRecording {
@@ -2559,7 +2605,76 @@ final class OneFPSRecorder: NSObject {
         }
     }
 
-    static func recoverOrphanedFrameDirectories() {
+    static func recoverInterruptedRecordingState() -> RecoveryReport {
+        var report = RecoveryReport()
+        recoverInterruptedDailyTransactions(report: &report)
+        recoverOrphanedFrameDirectories(report: &report)
+        return report
+    }
+
+    private static func recoverInterruptedDailyTransactions(report: inout RecoveryReport) {
+        guard FileManager.default.fileExists(atPath: recordingsDirectory.path),
+              let enumerator = FileManager.default.enumerator(
+                at: recordingsDirectory,
+                includingPropertiesForKeys: [.isRegularFileKey],
+                options: []
+              ) else { return }
+
+        for case let fileURL as URL in enumerator {
+            let name = fileURL.lastPathComponent
+            if name.hasPrefix(".daily-backup-"), name.hasSuffix(".mp4") {
+                restoreInterruptedDailyBackup(fileURL, report: &report)
+            } else if name.hasPrefix(".daily-"), name.hasSuffix(".mp4") {
+                try? FileManager.default.removeItem(at: fileURL)
+                report.removedInterruptedDailyFiles += 1
+            }
+        }
+    }
+
+    private static func restoreInterruptedDailyBackup(_ backupURL: URL, report: inout RecoveryReport) {
+        let directory = backupURL.deletingLastPathComponent()
+        let visibleVideos = ((try? FileManager.default.contentsOfDirectory(
+            at: directory,
+            includingPropertiesForKeys: [.isRegularFileKey],
+            options: [.skipsHiddenFiles]
+        )) ?? []).filter {
+            $0.pathExtension.lowercased() == "mp4"
+                && !$0.lastPathComponent.hasPrefix(".")
+                && !$0.lastPathComponent.contains(".before-")
+        }
+
+        if !visibleVideos.isEmpty {
+            try? FileManager.default.removeItem(at: backupURL)
+            report.removedInterruptedDailyFiles += 1
+            return
+        }
+
+        guard let restoredName = dailyFilenameFromBackupDirectory(directory) else {
+            return
+        }
+
+        let restoredURL = directory.appendingPathComponent(restoredName)
+        if FileManager.default.fileExists(atPath: restoredURL.path) {
+            try? FileManager.default.removeItem(at: backupURL)
+            report.removedInterruptedDailyFiles += 1
+            return
+        }
+
+        do {
+            try FileManager.default.moveItem(at: backupURL, to: restoredURL)
+            report.restoredDailyBackups += 1
+        } catch {
+            return
+        }
+    }
+
+    private static func dailyFilenameFromBackupDirectory(_ directory: URL) -> String? {
+        let monthDay = directory.lastPathComponent
+        guard monthDay.range(of: #"^\d{4}$"#, options: .regularExpression) != nil else { return nil }
+        return "\(monthDay)_\(RecorderSettings.recordingName).mp4"
+    }
+
+    private static func recoverOrphanedFrameDirectories(report: inout RecoveryReport) {
         guard let enumerator = FileManager.default.enumerator(
             at: recordingsDirectory,
             includingPropertiesForKeys: [.isDirectoryKey],
@@ -2575,17 +2690,30 @@ final class OneFPSRecorder: NSObject {
         }
 
         for frameDirectory in frameDirectories.sorted(by: { $0.path < $1.path }) {
-            recoverFrameDirectory(frameDirectory)
+            switch recoverFrameDirectory(frameDirectory) {
+            case .recovered:
+                report.recoveredSegments += 1
+            case .removedEmpty:
+                report.removedEmptyFrameDirectories += 1
+            case .failed:
+                report.failedFrameDirectories.append(frameDirectory.path)
+            }
         }
     }
 
-    private static func recoverFrameDirectory(_ frameDirectory: URL) {
+    private enum FrameRecoveryResult {
+        case recovered
+        case removedEmpty
+        case failed
+    }
+
+    private static func recoverFrameDirectory(_ frameDirectory: URL) -> FrameRecoveryResult {
         let frameNames = ((try? FileManager.default.contentsOfDirectory(atPath: frameDirectory.path)) ?? [])
             .filter { $0.hasSuffix(".jpg") }
             .sorted()
         guard !frameNames.isEmpty else {
             try? FileManager.default.removeItem(at: frameDirectory)
-            return
+            return .removedEmpty
         }
 
         let recoveredAt = Date()
@@ -2598,7 +2726,7 @@ final class OneFPSRecorder: NSObject {
         let listURL = frameDirectory.appendingPathComponent("frames.txt")
         let frameList = frameConcatList(frameNames: frameNames, in: frameDirectory)
         guard (try? frameList.write(to: listURL, atomically: true, encoding: .utf8)) != nil else {
-            return
+            return .failed
         }
 
         do {
@@ -2632,7 +2760,7 @@ final class OneFPSRecorder: NSObject {
                         date: endedAt,
                         expectedAddedFrames: frameNames.count
                       ) else {
-                    return
+                    return .failed
                 }
                 writeSegmentMetadata(
                     SegmentMetadata(
@@ -2651,10 +2779,11 @@ final class OneFPSRecorder: NSObject {
                 endedAt: endedAt,
                 outputURL: dailyOutputURL(for: endedAt),
                 segmentID: segmentID
-            ), syncDerivedLogs(for: endedAt) else { return }
+            ), syncDerivedLogs(for: endedAt) else { return .failed }
             try? FileManager.default.removeItem(at: frameDirectory)
+            return .recovered
         } catch {
-            return
+            return .failed
         }
     }
 
