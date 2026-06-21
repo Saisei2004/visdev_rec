@@ -574,7 +574,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 button.image = nil
             }
             button.imagePosition = .imageLeading
-            button.title = title == "1FPS" ? "" : title
+            button.title = ""
             button.contentTintColor = nil
             button.toolTip = title
         }
