@@ -7,6 +7,7 @@ enum RecorderSettings {
     private static let recordingNameKey = "recordingName"
     private static let showOverlayKey = "showRecordingOverlay"
     private static let showPauseOverlayKey = "showPauseOverlay"
+    private static let showMenuBarIconKey = "showMenuBarIcon"
     private static let showMenuBarTimeKey = "showMenuBarTime"
     private static let showMenuBarScoreKey = "showMenuBarScore"
     private static let legacyShowMenuBarStatusKey = "showMenuBarStatus"
@@ -68,6 +69,17 @@ enum RecorderSettings {
         set {
             defaults.set(newValue, forKey: showPauseOverlayKey)
         }
+    }
+
+    static var showMenuBarIcon: Bool {
+        get {
+            defaults.synchronize()
+            if defaults.object(forKey: showMenuBarIconKey) == nil {
+                return true
+            }
+            return defaults.bool(forKey: showMenuBarIconKey)
+        }
+        set { defaults.set(newValue, forKey: showMenuBarIconKey) }
     }
 
     static var showMenuBarTime: Bool {
@@ -335,7 +347,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         .appendingPathComponent("Library", isDirectory: true)
         .appendingPathComponent("Logs", isDirectory: true)
         .appendingPathComponent("1FPS録画.log")
-    private var statusItem: NSStatusItem!
+    private var statusItem: NSStatusItem?
     private var reportMenuItem: NSMenuItem?
     private var overlay: RecordingOverlay!
     private var recorder: OneFPSRecorder!
@@ -378,7 +390,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         OneFPSRecorder.reconcileDailyVideosWithLogs()
         OneFPSRecorder.syncAllDerivedLogs()
 
-        setupStatusItem()
+        refreshStatusItemVisibility()
         overlay = RecordingOverlay(
             startAction: { [weak self] in
                 self?.startRecordingFromOverlay()
@@ -448,10 +460,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.mainMenu = mainMenu
     }
 
+    private func refreshStatusItemVisibility() {
+        if RecorderSettings.showMenuBarIcon {
+            if statusItem == nil {
+                setupStatusItem()
+            }
+        } else if let statusItem {
+            NSStatusBar.system.removeStatusItem(statusItem)
+            self.statusItem = nil
+            reportMenuItem = nil
+        }
+    }
+
     private func setupStatusItem() {
-        statusItem = NSStatusBar.system.statusItem(
-            withLength: NSStatusItem.squareLength
-        )
+        let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         let menu = NSMenu()
         let toggleItem = NSMenuItem(title: "録画開始", action: #selector(toggleRecording), keyEquivalent: "")
         toggleItem.target = self
@@ -471,12 +493,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         settingsItem.target = self
         menu.addItem(settingsItem)
 
-        statusItem.menu = menu
+        item.menu = menu
+        statusItem = item
     }
 
     private func applyStatus(_ state: RecorderState) {
-        guard let button = statusItem.button else { return }
-        button.attributedTitle = NSAttributedString(string: "")
+        refreshStatusItemVisibility()
+        statusItem?.button?.attributedTitle = NSAttributedString(string: "")
         refreshMenuVisibility()
         switch state {
         case .idle:
@@ -485,11 +508,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 symbolName: isAutomaticallyPaused ? "pause.circle.fill" : "record.circle",
                 tint: isAutomaticallyPaused ? .systemYellow : nil
             )
-            statusItem.menu?.item(at: 0)?.title = "録画開始"
-            statusItem.menu?.item(at: 0)?.isEnabled = true
+            statusItem?.menu?.item(at: 0)?.title = "録画開始"
+            statusItem?.menu?.item(at: 0)?.isEnabled = true
             if isAutomaticallyPaused, RecorderSettings.showPauseOverlay {
                 overlay.showPaused(message: automaticPauseMessage)
-            } else if manualReadyOverlayVisible, RecorderSettings.showOverlay {
+            } else if (manualReadyOverlayVisible || !RecorderSettings.showMenuBarIcon), RecorderSettings.showOverlay {
                 overlay.showReady(message: "ここから録画できます")
             } else {
                 overlay.hide()
@@ -500,8 +523,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 symbolName: "tray.and.arrow.down.fill",
                 tint: .systemOrange
             )
-            statusItem.menu?.item(at: 0)?.title = "録画開始"
-            statusItem.menu?.item(at: 0)?.isEnabled = true
+            statusItem?.menu?.item(at: 0)?.title = "録画開始"
+            statusItem?.menu?.item(at: 0)?.isEnabled = true
             if isAutomaticallyPaused, RecorderSettings.showPauseOverlay {
                 overlay.showSaving(message: "一時停止を保存中")
             } else if RecorderSettings.showOverlay {
@@ -518,8 +541,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 symbolName: "record.circle.fill",
                 tint: .systemRed
             )
-            statusItem.menu?.item(at: 0)?.title = "録画停止"
-            statusItem.menu?.item(at: 0)?.isEnabled = true
+            statusItem?.menu?.item(at: 0)?.title = "録画停止"
+            statusItem?.menu?.item(at: 0)?.isEnabled = true
             if RecorderSettings.showOverlay {
                 overlay.showRecording(
                     elapsedSeconds: elapsed,
@@ -539,8 +562,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 symbolName: "tray.and.arrow.down.fill",
                 tint: .systemOrange
             )
-            statusItem.menu?.item(at: 0)?.title = "保存中..."
-            statusItem.menu?.item(at: 0)?.isEnabled = false
+            statusItem?.menu?.item(at: 0)?.title = "保存中..."
+            statusItem?.menu?.item(at: 0)?.isEnabled = false
             if isAutomaticallyPaused, RecorderSettings.showPauseOverlay {
                 overlay.showSaving(message: "一時停止を保存中")
             } else if RecorderSettings.showOverlay {
@@ -550,8 +573,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         case .error(let message):
             setMenuBarDisplay(title: "エラー", symbolName: "exclamationmark.circle.fill", tint: .systemRed)
-            statusItem.menu?.item(at: 0)?.title = "録画開始"
-            statusItem.menu?.item(at: 0)?.isEnabled = true
+            statusItem?.menu?.item(at: 0)?.title = "録画開始"
+            statusItem?.menu?.item(at: 0)?.isEnabled = true
             overlay.hide()
             showAlert(message)
         }
@@ -562,7 +585,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func setMenuBarDisplay(title: String, symbolName: String, tint: NSColor?) {
-        guard let button = statusItem.button else { return }
+        guard let statusItem, let button = statusItem.button else { return }
         let showsText = title.contains(":") || title.contains("¥")
         statusItem.length = showsText ? NSStatusItem.variableLength : NSStatusItem.squareLength
         if !showsText {

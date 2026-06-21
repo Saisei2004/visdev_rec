@@ -5,6 +5,7 @@ enum SharedSettings {
     private static let recordingNameKey = "recordingName"
     private static let showOverlayKey = "showRecordingOverlay"
     private static let showPauseOverlayKey = "showPauseOverlay"
+    private static let showMenuBarIconKey = "showMenuBarIcon"
     private static let showMenuBarTimeKey = "showMenuBarTime"
     private static let showMenuBarScoreKey = "showMenuBarScore"
     private static let legacyShowMenuBarStatusKey = "showMenuBarStatus"
@@ -61,6 +62,16 @@ enum SharedSettings {
         set {
             defaults.set(newValue, forKey: showPauseOverlayKey)
         }
+    }
+
+    static var showMenuBarIcon: Bool {
+        get {
+            if defaults.object(forKey: showMenuBarIconKey) == nil {
+                return true
+            }
+            return defaults.bool(forKey: showMenuBarIconKey)
+        }
+        set { defaults.set(newValue, forKey: showMenuBarIconKey) }
     }
 
     static var showMenuBarTime: Bool {
@@ -363,6 +374,7 @@ final class SettingsDelegate: NSObject, NSApplicationDelegate {
     private let nameField = NSTextField(string: SharedSettings.recordingName)
     private let overlayCheckbox = NSButton(checkboxWithTitle: "録画中パネルを表示する", target: nil, action: nil)
     private let pauseOverlayCheckbox = NSButton(checkboxWithTitle: "一時停止パネルを表示する", target: nil, action: nil)
+    private let menuBarIconCheckbox = NSButton(checkboxWithTitle: "メニューバーアイコンを表示する", target: nil, action: nil)
     private let menuBarTimeCheckbox = NSButton(checkboxWithTitle: "メニューバーに時間を表示する", target: nil, action: nil)
     private let menuBarScoreCheckbox = NSButton(checkboxWithTitle: "メニューバーにスコアを表示する", target: nil, action: nil)
     private let showReportMenuCheckbox = NSButton(checkboxWithTitle: "メニューバーに業務報告を表示する", target: nil, action: nil)
@@ -548,6 +560,7 @@ final class SettingsDelegate: NSObject, NSApplicationDelegate {
         }
         overlayCheckbox.state = SharedSettings.showOverlay ? .on : .off
         pauseOverlayCheckbox.state = SharedSettings.showPauseOverlay ? .on : .off
+        menuBarIconCheckbox.state = SharedSettings.showMenuBarIcon ? .on : .off
         menuBarTimeCheckbox.state = SharedSettings.showMenuBarTime ? .on : .off
         menuBarScoreCheckbox.state = SharedSettings.showMenuBarScore ? .on : .off
         monthlyScoreCheckbox.state = SharedSettings.showMonthlyScore ? .on : .off
@@ -587,79 +600,82 @@ final class SettingsDelegate: NSObject, NSApplicationDelegate {
         pauseOverlayCheckbox.state = SharedSettings.showPauseOverlay ? .on : .off
         pauseOverlayCheckbox.frame = NSRect(x: 150, y: 422, width: 240, height: 22)
 
+        menuBarIconCheckbox.state = SharedSettings.showMenuBarIcon ? .on : .off
+        menuBarIconCheckbox.frame = NSRect(x: 150, y: 394, width: 280, height: 22)
+
         menuBarTimeCheckbox.state = SharedSettings.showMenuBarTime ? .on : .off
-        menuBarTimeCheckbox.frame = NSRect(x: 150, y: 394, width: 280, height: 22)
+        menuBarTimeCheckbox.frame = NSRect(x: 150, y: 366, width: 280, height: 22)
 
         menuBarScoreCheckbox.state = SharedSettings.showMenuBarScore ? .on : .off
-        menuBarScoreCheckbox.frame = NSRect(x: 150, y: 366, width: 280, height: 22)
+        menuBarScoreCheckbox.frame = NSRect(x: 150, y: 338, width: 280, height: 22)
 
-        let displayHint = NSTextField(labelWithString: "録画中だけ、選んだ項目をアイコン横に表示します。両方OFFなら常にアイコンのみです。")
+        let displayHint = NSTextField(labelWithString: "アイコンOFF時はパネルと設定画面だけで操作します。時間とスコアは録画中だけ表示します。")
         displayHint.font = NSFont.systemFont(ofSize: 11)
         displayHint.textColor = .secondaryLabelColor
-        displayHint.frame = NSRect(x: 150, y: 340, width: 360, height: 18)
+        displayHint.frame = NSRect(x: 150, y: 312, width: 360, height: 18)
 
         let scoreTitle = NSTextField(labelWithString: "月間スコア")
         scoreTitle.font = NSFont.systemFont(ofSize: 13, weight: .semibold)
-        scoreTitle.frame = NSRect(x: 30, y: 304, width: 90, height: 20)
+        scoreTitle.frame = NSRect(x: 30, y: 276, width: 90, height: 20)
 
         monthlyScoreCheckbox.state = SharedSettings.showMonthlyScore ? .on : .off
-        monthlyScoreCheckbox.frame = NSRect(x: 150, y: 304, width: 200, height: 22)
+        monthlyScoreCheckbox.frame = NSRect(x: 150, y: 276, width: 200, height: 22)
 
         resetMonthlyScoreButton.target = self
         resetMonthlyScoreButton.action = #selector(resetMonthlyScorePressed)
         resetMonthlyScoreButton.bezelStyle = .rounded
-        resetMonthlyScoreButton.frame = NSRect(x: 390, y: 298, width: 120, height: 28)
+        resetMonthlyScoreButton.frame = NSRect(x: 390, y: 270, width: 120, height: 28)
 
         let hourlyRateLabel = NSTextField(labelWithString: "係数")
         hourlyRateLabel.font = NSFont.systemFont(ofSize: 12)
-        hourlyRateLabel.frame = NSRect(x: 150, y: 268, width: 60, height: 20)
+        hourlyRateLabel.frame = NSRect(x: 150, y: 240, width: 60, height: 20)
 
-        hourlyRateField.frame = NSRect(x: 210, y: 262, width: 100, height: 28)
+        hourlyRateField.frame = NSRect(x: 210, y: 234, width: 100, height: 28)
         hourlyRateField.placeholderString = "2000"
 
         let goalLabel = NSTextField(labelWithString: "月末ライン")
         goalLabel.font = NSFont.systemFont(ofSize: 12)
-        goalLabel.frame = NSRect(x: 330, y: 268, width: 78, height: 20)
+        goalLabel.frame = NSRect(x: 330, y: 240, width: 78, height: 20)
 
-        monthlyGoalField.frame = NSRect(x: 410, y: 262, width: 100, height: 28)
+        monthlyGoalField.frame = NSRect(x: 410, y: 234, width: 100, height: 28)
         monthlyGoalField.placeholderString = "100000"
 
         glowCheckbox.state = SharedSettings.glowWhenGoalReached ? .on : .off
-        glowCheckbox.frame = NSRect(x: 150, y: 232, width: 220, height: 22)
+        glowCheckbox.frame = NSRect(x: 150, y: 204, width: 220, height: 22)
 
         let scoreHint = NSTextField(labelWithString: "係数の標準値は 2000。月末ラインを超えると録画中パネルが発光できます。")
         scoreHint.font = NSFont.systemFont(ofSize: 11)
         scoreHint.textColor = .secondaryLabelColor
-        scoreHint.frame = NSRect(x: 150, y: 206, width: 360, height: 18)
+        scoreHint.frame = NSRect(x: 150, y: 178, width: 360, height: 18)
 
         let pauseTitle = NSTextField(labelWithString: "自動一時停止")
         pauseTitle.font = NSFont.systemFont(ofSize: 13, weight: .semibold)
-        pauseTitle.frame = NSRect(x: 30, y: 170, width: 100, height: 20)
+        pauseTitle.frame = NSRect(x: 30, y: 142, width: 100, height: 20)
 
         pauseOnSleepCheckbox.state = SharedSettings.pauseOnSleep ? .on : .off
-        pauseOnSleepCheckbox.frame = NSRect(x: 150, y: 170, width: 220, height: 22)
+        pauseOnSleepCheckbox.frame = NSRect(x: 150, y: 142, width: 220, height: 22)
 
         pauseOnMouseIdleCheckbox.state = SharedSettings.pauseOnMouseIdle ? .on : .off
-        pauseOnMouseIdleCheckbox.frame = NSRect(x: 150, y: 140, width: 220, height: 22)
+        pauseOnMouseIdleCheckbox.frame = NSRect(x: 150, y: 112, width: 220, height: 22)
 
         let idleMinutesLabel = NSTextField(labelWithString: "無操作分")
         idleMinutesLabel.font = NSFont.systemFont(ofSize: 12)
-        idleMinutesLabel.frame = NSRect(x: 350, y: 142, width: 60, height: 20)
+        idleMinutesLabel.frame = NSRect(x: 350, y: 114, width: 60, height: 20)
 
-        mouseIdleMinutesField.frame = NSRect(x: 410, y: 136, width: 100, height: 28)
+        mouseIdleMinutesField.frame = NSRect(x: 410, y: 108, width: 100, height: 28)
         mouseIdleMinutesField.placeholderString = "5"
 
         let reportTitle = NSTextField(labelWithString: "業務報告")
         reportTitle.font = NSFont.systemFont(ofSize: 13, weight: .semibold)
-        reportTitle.frame = NSRect(x: 30, y: 100, width: 90, height: 20)
+        reportTitle.frame = NSRect(x: 30, y: 72, width: 90, height: 20)
 
         showReportMenuCheckbox.state = SharedSettings.showReportMenu ? .on : .off
-        showReportMenuCheckbox.frame = NSRect(x: 150, y: 100, width: 260, height: 22)
+        showReportMenuCheckbox.frame = NSRect(x: 150, y: 72, width: 260, height: 22)
 
         reportDefaultsButton.target = self
         reportDefaultsButton.action = #selector(openReportDefaults)
         reportDefaultsButton.bezelStyle = .rounded
-        reportDefaultsButton.frame = NSRect(x: 150, y: 64, width: 150, height: 30)
+        reportDefaultsButton.frame = NSRect(x: 150, y: 36, width: 150, height: 30)
 
         let closeButton = NSButton(title: "閉じる", target: self, action: #selector(closeAdvancedPressed))
         closeButton.bezelStyle = .rounded
@@ -673,6 +689,7 @@ final class SettingsDelegate: NSObject, NSApplicationDelegate {
         content.addSubview(displayTitle)
         content.addSubview(overlayCheckbox)
         content.addSubview(pauseOverlayCheckbox)
+        content.addSubview(menuBarIconCheckbox)
         content.addSubview(menuBarTimeCheckbox)
         content.addSubview(menuBarScoreCheckbox)
         content.addSubview(displayHint)
@@ -700,6 +717,11 @@ final class SettingsDelegate: NSObject, NSApplicationDelegate {
     @objc private func saveAdvancedPressed() {
         SharedSettings.showOverlay = overlayCheckbox.state == .on
         SharedSettings.showPauseOverlay = pauseOverlayCheckbox.state == .on
+        SharedSettings.showMenuBarIcon = menuBarIconCheckbox.state == .on
+        if !SharedSettings.showMenuBarIcon {
+            SharedSettings.showOverlay = true
+            overlayCheckbox.state = .on
+        }
         SharedSettings.showMenuBarTime = menuBarTimeCheckbox.state == .on
         SharedSettings.showMenuBarScore = menuBarScoreCheckbox.state == .on
         SharedSettings.showMonthlyScore = monthlyScoreCheckbox.state == .on
