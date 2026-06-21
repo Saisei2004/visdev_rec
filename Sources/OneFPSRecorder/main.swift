@@ -536,14 +536,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if RecorderSettings.compactMenuBarIcon {
             button.title = ""
             button.imagePosition = .imageOnly
-            if let symbol = NSImage(systemSymbolName: symbolName, accessibilityDescription: title) {
-                symbol.isTemplate = tint == nil
+            if tint == nil, let icon = appMenuBarIcon(accessibilityDescription: title) {
+                button.image = icon
+            } else if let symbol = coloredMenuBarSymbol(symbolName: symbolName, tint: tint ?? .systemRed, accessibilityDescription: title) {
                 button.image = symbol
             } else {
                 button.image = nil
                 button.title = "●"
             }
-            button.contentTintColor = tint
+            button.contentTintColor = nil
             button.toolTip = title
         } else {
             button.image = nil
@@ -551,6 +552,52 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             button.contentTintColor = nil
             button.toolTip = nil
         }
+    }
+
+    private func appMenuBarIcon(accessibilityDescription: String) -> NSImage? {
+        let resourceNames = ["AppIcon.png", "AppIcon.icns"]
+        for resourceName in resourceNames {
+            guard let resourceURL = Bundle.main.resourceURL?.appendingPathComponent(resourceName),
+                  let source = NSImage(contentsOf: resourceURL) else {
+                continue
+            }
+            let image = NSImage(size: NSSize(width: 18, height: 18))
+            image.lockFocus()
+            source.draw(
+                in: NSRect(x: 1, y: 1, width: 16, height: 16),
+                from: .zero,
+                operation: .sourceOver,
+                fraction: 1
+            )
+            image.unlockFocus()
+            image.isTemplate = false
+            image.accessibilityDescription = accessibilityDescription
+            return image
+        }
+        return nil
+    }
+
+    private func coloredMenuBarSymbol(symbolName: String, tint: NSColor, accessibilityDescription: String) -> NSImage? {
+        let configuration = NSImage.SymbolConfiguration(pointSize: 16, weight: .semibold)
+        guard let symbol = NSImage(systemSymbolName: symbolName, accessibilityDescription: accessibilityDescription)?
+            .withSymbolConfiguration(configuration) else {
+            return nil
+        }
+        symbol.isTemplate = true
+
+        let image = NSImage(size: NSSize(width: 18, height: 18))
+        image.lockFocus()
+        tint.set()
+        symbol.draw(
+            in: NSRect(x: 1, y: 1, width: 16, height: 16),
+            from: .zero,
+            operation: .sourceOver,
+            fraction: 1
+        )
+        image.unlockFocus()
+        image.isTemplate = false
+        image.accessibilityDescription = accessibilityDescription
+        return image
     }
 
     private static func currency(_ amount: Int) -> String {
