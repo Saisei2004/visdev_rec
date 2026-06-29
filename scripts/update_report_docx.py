@@ -55,7 +55,7 @@ def table_cell(text="", bold=False):
     return (
         '<w:tc><w:tcPr><w:tcW w:w="0" w:type="auto"/>'
         '<w:vAlign w:val="center"/></w:tcPr>'
-        f'{paragraph(text, bold=bold, align="center" if bold else None)}'
+        f'{paragraph(text, bold=bold, align="center")}'
         "</w:tc>"
     )
 
@@ -69,8 +69,10 @@ def table_row(values, bold_first=False):
 
 def report_minutes_text(entry):
     if "minutes" in entry and entry.get("minutes") is not None:
-        return f'{max(0, int(entry.get("minutes") or 0))}分'
-    return f'{max(0, int(entry.get("hours") or 0) * 60)}分'
+        minutes = max(0, int(entry.get("minutes") or 0))
+    else:
+        minutes = max(0, int(entry.get("hours") or 0) * 60)
+    return f"{minutes // 60}h {minutes % 60}m"
 
 
 def generated_report_table(entry):
@@ -102,12 +104,26 @@ def generated_report_table(entry):
     return "<w:tbl>" + borders + grid + "".join(table_row(row, bold_first=True) for row in rows) + "</w:tbl>"
 
 
-def clear_paragraph_text(paragraph_element, text):
+def set_paragraph_alignment(paragraph_element, align):
+    ppr = paragraph_element.find(q("pPr"))
+    if ppr is None:
+        ppr = ET.Element(q("pPr"))
+        paragraph_element.insert(0, ppr)
+    for child in list(ppr):
+        if child.tag == q("jc"):
+            ppr.remove(child)
+    jc = ET.SubElement(ppr, q("jc"))
+    jc.set(q("val"), align)
+
+
+def clear_paragraph_text(paragraph_element, text, align=None):
     ppr = paragraph_element.find(q("pPr"))
     for child in list(paragraph_element):
         if ppr is not None and child is ppr:
             continue
         paragraph_element.remove(child)
+    if align:
+        set_paragraph_alignment(paragraph_element, align)
     run = ET.SubElement(paragraph_element, q("r"))
     text_element = ET.SubElement(run, q("t"))
     value = str(text or "")
@@ -116,7 +132,7 @@ def clear_paragraph_text(paragraph_element, text):
     text_element.text = value
 
 
-def set_cell_text(table_element, row_index, col_index, text):
+def set_cell_text(table_element, row_index, col_index, text, align="center"):
     rows = table_element.findall(q("tr"))
     if row_index >= len(rows):
         return
@@ -126,7 +142,7 @@ def set_cell_text(table_element, row_index, col_index, text):
     paragraphs = cells[col_index].findall(q("p"))
     if not paragraphs:
         paragraphs = [ET.SubElement(cells[col_index], q("p"))]
-    clear_paragraph_text(paragraphs[0], text)
+    clear_paragraph_text(paragraphs[0], text, align=align)
     for extra in paragraphs[1:]:
         cells[col_index].remove(extra)
 

@@ -3753,7 +3753,8 @@ final class OneFPSRecorder: NSObject {
     }
 
     static func reportMinutesText(_ minutes: Int) -> String {
-        "\(max(0, minutes))分"
+        let safeMinutes = max(0, minutes)
+        return "\(safeMinutes / 60)h \(safeMinutes % 60)m"
     }
 
     private static func shortDateString(from date: Date) -> String {
