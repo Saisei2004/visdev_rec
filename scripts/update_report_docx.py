@@ -67,13 +67,19 @@ def table_row(values, bold_first=False):
     return "<w:tr>" + "".join(cells) + "</w:tr>"
 
 
+def report_minutes_text(entry):
+    if "minutes" in entry and entry.get("minutes") is not None:
+        return f'{max(0, int(entry.get("minutes") or 0))}分'
+    return f'{max(0, int(entry.get("hours") or 0) * 60)}分'
+
+
 def generated_report_table(entry):
     video_link = entry.get("videoLink") or entry.get("videoFileName") or ""
     rows = [
         ("項目", "入力欄", "備考欄"),
         ("担当者", entry.get("reporter", ""), ""),
         ("日付", entry.get("displayDate", ""), ""),
-        ("業務時間", f'{entry.get("hours", 0)}h', ""),
+        ("業務時間", report_minutes_text(entry), ""),
         ("業務プラン", entry.get("workPlan", ""), ""),
         ("業務内容", entry.get("workContent", ""), ""),
         ("業務動画リンク", video_link, ""),
@@ -130,7 +136,7 @@ def fill_template_table(table_element, entry):
     values = {
         1: (entry.get("reporter", ""), ""),
         2: (entry.get("displayDate", ""), ""),
-        3: (f'{entry.get("hours", 0)}h', ""),
+        3: (report_minutes_text(entry), ""),
         4: (entry.get("workPlan", ""), ""),
         5: (entry.get("workContent", ""), ""),
         6: (video_link, ""),

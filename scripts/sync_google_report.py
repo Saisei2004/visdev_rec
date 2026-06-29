@@ -3,6 +3,7 @@ import argparse
 import json
 import mimetypes
 import os
+import ssl
 import subprocess
 import sys
 import tempfile
@@ -18,6 +19,12 @@ from update_report_docx import regenerate_docx
 DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 GOOGLE_DOC_MIME = "application/vnd.google-apps.document"
 DEFAULT_VIDEO_FOLDER_URL = ""
+
+try:
+    import certifi
+    SSL_CONTEXT = ssl.create_default_context(cafile=certifi.where())
+except Exception:
+    SSL_CONTEXT = ssl.create_default_context()
 
 
 def parse_drive_id(value):
@@ -79,7 +86,7 @@ def request_json(method, url, token, payload=None, headers=None):
         all_headers["Content-Type"] = "application/json; charset=UTF-8"
     request = urllib.request.Request(url, data=data, headers=all_headers, method=method)
     try:
-        with urllib.request.urlopen(request, timeout=60) as response:
+        with urllib.request.urlopen(request, timeout=60, context=SSL_CONTEXT) as response:
             body = response.read()
     except urllib.error.HTTPError as exc:
         detail = exc.read().decode("utf-8", errors="replace")
@@ -92,7 +99,7 @@ def request_json(method, url, token, payload=None, headers=None):
 def request_bytes(method, url, token):
     request = urllib.request.Request(url, headers={"Authorization": f"Bearer {token}"}, method=method)
     try:
-        with urllib.request.urlopen(request, timeout=120) as response:
+        with urllib.request.urlopen(request, timeout=120, context=SSL_CONTEXT) as response:
             return response.read()
     except urllib.error.HTTPError as exc:
         detail = exc.read().decode("utf-8", errors="replace")
@@ -175,7 +182,7 @@ def multipart_upload_update(token, file_id, docx_path):
         method="PATCH",
     )
     try:
-        with urllib.request.urlopen(request, timeout=180) as response:
+        with urllib.request.urlopen(request, timeout=180, context=SSL_CONTEXT) as response:
             return json.loads(response.read().decode("utf-8"))
     except urllib.error.HTTPError as exc:
         detail = exc.read().decode("utf-8", errors="replace")
@@ -225,7 +232,7 @@ def upload_video(token, folder_id, video_path):
         method=method,
     )
     try:
-        with urllib.request.urlopen(request, timeout=600) as response:
+        with urllib.request.urlopen(request, timeout=600, context=SSL_CONTEXT) as response:
             return json.loads(response.read().decode("utf-8"))
     except urllib.error.HTTPError as exc:
         detail = exc.read().decode("utf-8", errors="replace")

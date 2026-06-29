@@ -338,7 +338,7 @@ struct ReportSubmissionForm {
 struct ReportSubmissionResult {
     var reportURL: URL
     var submittedVideoURL: URL
-    var hours: Int
+    var minutes: Int
 }
 
 struct StoredReportEntry: Codable {
@@ -346,6 +346,7 @@ struct StoredReportEntry: Codable {
     var displayDate: String
     var reporter: String
     var hours: Int
+    var minutes: Int?
     var workPlan: String
     var workContent: String
     var videoLink: String
@@ -947,12 +948,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             RecorderSettings.defaultReportMessage = form.message
             do {
                 let result = try OneFPSRecorder.submitReport(form)
-                self?.showAlert("業務報告を更新しました。\n業務時間: \(result.hours)h\n\n報告: \(result.reportURL.path)\n提出動画: \(result.submittedVideoURL.path)")
+                self?.showAlert("業務報告を更新しました。\n業務時間: \(OneFPSRecorder.reportMinutesText(result.minutes))\n\n報告: \(result.reportURL.path)\n提出動画: \(result.submittedVideoURL.path)")
                 if let driveURL = URL(string: form.driveFolderURL), !form.driveFolderURL.isEmpty {
                     NSWorkspace.shared.open(driveURL)
                 } else {
                     NSWorkspace.shared.open(result.submittedVideoURL.deletingLastPathComponent())
                 }
+                self?.bringReportWindowToFront()
             } catch {
                 self?.showAlert(error.localizedDescription)
             }
@@ -960,6 +962,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.setActivationPolicy(.regular)
         NSApp.activate(ignoringOtherApps: true)
         reportWindowController?.showWindow(nil)
+    }
+
+    private func bringReportWindowToFront() {
+        NSApp.setActivationPolicy(.regular)
+        NSApp.activate(ignoringOtherApps: true)
+        reportWindowController?.window?.makeKeyAndOrderFront(nil)
+        reportWindowController?.window?.orderFrontRegardless()
     }
 
     @objc private func openSettings() {
@@ -1292,7 +1301,7 @@ final class ReportSubmissionWindowController: NSWindowController, NSWindowDelega
         destination.frame = NSRect(x: 28, y: 78, width: 560, height: 18)
         contentView.addSubview(destination)
 
-        let hint = NSTextField(labelWithString: "業務時間は録画区間ログから切り捨て1時間単位で入ります。日付を変えると過去日の上書きになります。")
+        let hint = NSTextField(labelWithString: "業務時間は録画区間ログから切り捨て分単位で入ります。日付を変えると過去日の上書きになります。")
         hint.font = NSFont.systemFont(ofSize: 11)
         hint.textColor = .secondaryLabelColor
         hint.frame = NSRect(x: 28, y: 46, width: 560, height: 18)
@@ -3498,7 +3507,7 @@ final class OneFPSRecorder: NSObject {
         }
 
         let seconds = dailyWorkSeconds(for: form.date)
-        let hours = max(0, seconds / 3600)
+        let minutes = max(0, seconds / 60)
         let month = monthString(from: form.date)
         let day = dayString(from: form.date)
         let monthDay = monthDayString(from: form.date)
@@ -3518,7 +3527,7 @@ final class OneFPSRecorder: NSObject {
             form: form,
             reportURL: reportURL,
             submittedVideoURL: submittedVideoURL,
-            hours: hours,
+            minutes: minutes,
             day: day
         )
 
@@ -3529,7 +3538,7 @@ final class OneFPSRecorder: NSObject {
             entriesURL: reportDataURL,
             docxReportURL: docxReportURL,
             submittedVideoURL: submittedVideoURL,
-            hours: hours,
+            minutes: minutes,
             day: day
         )
         try syncGoogleReportIfPossible(
@@ -3538,7 +3547,7 @@ final class OneFPSRecorder: NSObject {
             submittedVideoURL: submittedVideoURL
         )
 
-        return ReportSubmissionResult(reportURL: docxReportURL, submittedVideoURL: submittedVideoURL, hours: hours)
+        return ReportSubmissionResult(reportURL: docxReportURL, submittedVideoURL: submittedVideoURL, minutes: minutes)
     }
 
     private static func syncGoogleReportIfPossible(
@@ -3604,7 +3613,7 @@ final class OneFPSRecorder: NSObject {
         entriesURL: URL,
         docxReportURL: URL,
         submittedVideoURL: URL,
-        hours: Int,
+        minutes: Int,
         day: String
     ) throws {
         try FileManager.default.createDirectory(at: entriesURL.deletingLastPathComponent(), withIntermediateDirectories: true)
@@ -3618,7 +3627,8 @@ final class OneFPSRecorder: NSObject {
             date: day,
             displayDate: shortDateString(from: form.date),
             reporter: form.reporter.trimmingCharacters(in: .whitespacesAndNewlines),
-            hours: hours,
+            hours: minutes / 60,
+            minutes: minutes,
             workPlan: form.workPlan.trimmingCharacters(in: .whitespacesAndNewlines),
             workContent: form.workContent.trimmingCharacters(in: .whitespacesAndNewlines),
             videoLink: videoText.isEmpty ? submittedVideoURL.lastPathComponent : videoText,
@@ -3695,7 +3705,7 @@ final class OneFPSRecorder: NSObject {
         form: ReportSubmissionForm,
         reportURL: URL,
         submittedVideoURL: URL,
-        hours: Int,
+        minutes: Int,
         day: String
     ) throws {
         let markerStart = "<!-- OneFPSReport:\(day) -->"
@@ -3712,7 +3722,7 @@ final class OneFPSRecorder: NSObject {
         | --- | --- | --- |
         | 担当者 | \(markdownCell(form.reporter)) |  |
         | 日付 | \(titleDate) |  |
-        | 業務時間 | \(hours)h |  |
+        | 業務時間 | \(reportMinutesText(minutes)) |  |
         | 業務プラン | \(markdownCell(form.workPlan)) |  |
         | 業務内容 | \(markdownCell(form.workContent)) |  |
         | 業務動画リンク | \(markdownCell(videoText)) |  |
@@ -3740,6 +3750,10 @@ final class OneFPSRecorder: NSObject {
             .replacingOccurrences(of: "\n", with: "<br>")
             .replacingOccurrences(of: "|", with: "\\|")
         return cleaned.isEmpty ? "-" : cleaned
+    }
+
+    static func reportMinutesText(_ minutes: Int) -> String {
+        "\(max(0, minutes))分"
     }
 
     private static func shortDateString(from date: Date) -> String {
@@ -3939,7 +3953,7 @@ if CommandLine.arguments.count >= 3, CommandLine.arguments[1] == "--command" {
         let result = try OneFPSRecorder.submitReport(form)
         print("report=\(result.reportURL.path)")
         print("video=\(result.submittedVideoURL.path)")
-        print("hours=\(result.hours)")
+        print("minutes=\(result.minutes)")
     } catch {
         fputs("\(error.localizedDescription)\n", stderr)
         exit(1)
