@@ -3565,6 +3565,7 @@ final class OneFPSRecorder: NSObject {
             scriptURL.path,
             "--folder-url", folderURL,
             "--video-folder-url", videoFolderURL,
+            "--document-name", reportDocumentName(for: form.date),
             "--template", expandedPath(RecorderSettings.reportTemplatePath),
             "--entries-json", entriesURL.path,
             "--video", submittedVideoURL.path
@@ -3755,6 +3756,13 @@ final class OneFPSRecorder: NSObject {
     static func reportMinutesText(_ minutes: Int) -> String {
         let safeMinutes = max(0, minutes)
         return "\(safeMinutes / 60)h \(safeMinutes % 60)m"
+    }
+
+    private static func reportDocumentName(for date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "ja_JP")
+        formatter.dateFormat = "M"
+        return "報告書（\(formatter.string(from: date))月分）"
     }
 
     private static func shortDateString(from date: Date) -> String {

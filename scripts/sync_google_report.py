@@ -122,9 +122,44 @@ def find_report_document(token, folder_id, name):
     })
     result = request_json("GET", f"https://www.googleapis.com/drive/v3/files?{params}", token)
     files = result.get("files", [])
-    if not files:
-        raise RuntimeError(f"Driveフォルダ内にGoogleドキュメント「{name}」が見つかりません。")
-    return files[0]
+    return files[0] if files else None
+
+
+def create_google_document(token, folder_id, name, docx_path):
+    boundary = "onefps-" + uuid.uuid4().hex
+    metadata = {"name": name, "parents": [folder_id], "mimeType": GOOGLE_DOC_MIME}
+    media = Path(docx_path).read_bytes()
+    body = b"".join([
+        f"--{boundary}\r\n".encode(),
+        b"Content-Type: application/json; charset=UTF-8\r\n\r\n",
+        json.dumps(metadata).encode("utf-8"),
+        b"\r\n",
+        f"--{boundary}\r\n".encode(),
+        f"Content-Type: {DOCX_MIME}\r\n\r\n".encode(),
+        media,
+        b"\r\n",
+        f"--{boundary}--\r\n".encode(),
+    ])
+    params = urllib.parse.urlencode({
+        "uploadType": "multipart",
+        "fields": "id,name,mimeType,webViewLink",
+        "supportsAllDrives": "true",
+    })
+    request = urllib.request.Request(
+        f"https://www.googleapis.com/upload/drive/v3/files?{params}",
+        data=body,
+        headers={
+            "Authorization": f"Bearer {token}",
+            "Content-Type": f"multipart/related; boundary={boundary}",
+        },
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=180, context=SSL_CONTEXT) as response:
+            return json.loads(response.read().decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        detail = exc.read().decode("utf-8", errors="replace")
+        raise RuntimeError(f"Google Drive新規作成に失敗しました {exc.code}: {detail}") from exc
 
 
 def find_drive_file(token, folder_id, name):
@@ -290,9 +325,14 @@ def main():
             if not template_path.exists():
                 raise RuntimeError(f"報告書テンプレートが見つかりません: {template_path}")
         else:
+            if not document:
+                raise RuntimeError(f"Driveフォルダ内にGoogleドキュメント「{args.document_name}」が見つかりません。新規作成には --template が必要です。")
             export_google_docx(token, document["id"], template_path)
         regenerate_docx(str(template_path), str(output_path), str(entries_path))
-        updated = multipart_upload_update(token, document["id"], output_path)
+        if document:
+            updated = multipart_upload_update(token, document["id"], output_path)
+        else:
+            updated = create_google_document(token, folder_id, args.document_name, output_path)
 
     result = {"document": updated, "video": video_result}
     if args.output_json:
