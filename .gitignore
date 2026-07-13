@@ -7,3 +7,15 @@ __pycache__/
 DerivedData/
 *.xcuserstate
 *.swp
+.vs/
+bin/
+obj/
+publish/
+TestResults/
+*.user
+*.suo
+*.log
+tasks.json
+config.json
+submission-state-*.json
+report-config.json
