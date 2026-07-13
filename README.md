@@ -45,11 +45,16 @@ xcode-select --install
 - メニューバーの録画アイコンから `録画開始` / `録画停止`
 - `保存フォルダを開く` で保存先をFinder表示
 - 詳細設定で有効にした場合だけ、メニューバーから `業務報告を提出...` を表示
+- `今月の未提出日をまとめて...` で、動画がある未完了日を抽出し、日ごとの全項目を編集して一括処理
+- 動画のDrive投稿、Drive月報更新、Slack日報投稿は別々に選択
 - `設定...` で保存名と基本操作を変更
 - `詳細設定...` で表示、月間スコア、自動一時停止、業務報告を変更
 - 録画中は小さな前面パネルからも停止可能
 - 前面パネルの画面ポップアップから、`マウスの画面を追従` または特定ディスプレイへの固定を即時切り替え
 - 前面パネルの `設定` から、基本設定と詳細設定を開く
+- `ポップアップ編集` で標準・最小・カスタムを選び、幅、表示ボタン、各表記を変更
+- 最小構成では録画中かどうかを示す小さな状態ドットだけを表示
+- `Visitasタスク` から個人用Task Hubと担当中GitHub Issuesを確認
 - 設定画面の `パネルを今すぐ表示` で、待機中パネルをメイン画面へ呼び戻し
 - 設定画面の `アプリを完全終了` で、常駐アプリを終了
 - 停止後の保存処理中でも、次の `録画開始` が可能
@@ -63,6 +68,7 @@ xcode-select --install
 ~/Movies/1FPS録画/YYYY-MM/月間スコア-YYYY-MM.txt
 ~/Movies/1FPS録画/YYYY-MM/業務報告-YYYY-MM.docx
 ~/Movies/1FPS録画/YYYY-MM/業務報告データ-YYYY-MM.json
+~/Movies/1FPS録画/YYYY-MM/提出状態-YYYY-MM.json
 ~/Movies/1FPS録画/YYYY-MM/提出/MMDD/MMDD_保存名.mp4
 ```
 
@@ -90,6 +96,9 @@ xcode-select --install
 - 業務動画リンク欄には、アップロードした動画のDriveリンクを自動で記録
 - 提出先Driveフォルダは提出後に自動で開きます
 - 提出画面の初期値は設定の `業務報告初期値...` から変更できます
+- `今月の未提出日をまとめて...` は、動画があり、報告未作成またはDrive/Slackのいずれかが未完了の日を一覧化します
+- 一括画面では担当者、業務プラン、`✅ やった`、`🚧 詰まった / 判断待ち`、`➡️ 明日`、状態、補足、動画リンクを日付ごとに編集できます
+- 投稿状態は月別の `提出状態-YYYY-MM.json` に保存され、途中で失敗した宛先だけを再開できます
 - 報告書テンプレートは標準で `~/Downloads/報告書（6月分）.docx` を使います。これは新しい月別報告書を作るための雛形です。別名や別フォルダに置く場合は設定で変更します
 
 Drive連携を使う場合は、設定の `業務報告初期値...` に以下を入れます。
@@ -106,6 +115,42 @@ CLIから同じ提出処理を確認する場合:
 ~/Applications/OneFPSRecorder.app/Contents/MacOS/OneFPSRecorder --submit-report-date 2026-06-20 "業務内容" "次回Task"
 ```
 
+月内の未完了候補、日報参照元、Skill用JSON提出も確認できます。
+
+```zsh
+APP=~/Applications/OneFPSRecorder.app/Contents/MacOS/OneFPSRecorder
+"$APP" --report-config
+"$APP" --report-candidates 2026-07
+"$APP" --submit-report-json /path/to/request.json
+"$APP" --mark-slack-posted-date 2026-07-13
+```
+
+## Slack・Codex・Claude連携
+
+設定の `日報・参照元...` では、Visitas Slack `#日報`、Gmail Notta検索、個人Task Hub、GitHub Issues、追加参照を登録できます。標準のTask Hub正典は `~/visitas-tasks/tasks.json` で、`AGENT.md` と `KNOWLEDGE.md` も一緒に参照します。
+
+Slack `#日報` は本人の日報スレッドへ、次の形式で投稿します。
+
+```text
+📅 M/D @名前
+✅ やった
+・（PRリンク / Refs #Issue番号）
+🚧 詰まった / 判断待ち
+・（無ければ「なし」）
+➡️ 明日
+・（次の作業）
+```
+
+アプリから直接Slackへ投稿する場合は、`Incoming Webhook` と本人の `個人スレッドID` を設定します。WebhookはmacOSキーチェーンに保存されます。Webhookを使わず、Codex/ClaudeのSlack連携から本人スレッドへ投稿することもできます。
+
+`./install.sh` は `visitas-daily-report` SkillをCodexの `~/.agents/skills/` とClaudeの `~/.claude/skills/` にインストールします。Skillは録画・Drive・Slackの許可を独立して扱い、明示されていない外部操作については実行前に次を確認します。
+
+1. 今日の動画を投稿して良いですか。
+2. Driveの報告書を自動で書いて良いですか。
+3. Slackの日報を自動で書いて良いですか。
+
+許可が無い場合は下書きと候補表示までで止まり、外部投稿は行いません。
+
 ## 設定
 
 基本設定:
@@ -115,6 +160,9 @@ CLIから同じ提出処理を確認する場合:
 - `パネルを今すぐ表示`: 録画中パネル設定をONにして、待機中パネルをメイン画面へ表示
 - `アプリを完全終了`: ログイン時の自動起動設定は残したまま、今動いている常駐アプリを終了
 - `詳細設定...`: 表示、月間スコア、自動一時停止、業務報告を変更
+- `ポップアップ編集`: 標準・状態ドットだけの最小・任意構成を切り替え、幅、ボタン、表記を変更
+- `Visitasタスク`: `~/visitas-tasks/tasks.json` の未完了タスク、最終棚卸し、担当中GitHub Issuesを表示し、既存Task Hubを開く
+- `日報・参照元...`: Slack/Gmail Notta/Task Hub/GitHub/追加参照とSlack Webhook・個人スレッドを設定
 
 詳細設定:
 

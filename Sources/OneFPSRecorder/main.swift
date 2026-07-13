@@ -23,6 +23,31 @@ enum RecorderSettings {
     private static let autoResumeOnMouseMoveKey = "autoResumeOnMouseMove"
     private static let mouseIdleMinutesKey = "mouseIdleMinutes"
     private static let captureDisplayIDKey = "captureDisplayID"
+    private static let popupPresetKey = "popupPreset"
+    private static let popupWidthKey = "popupWidth"
+    private static let popupShowTitleKey = "popupShowTitle"
+    private static let popupShowMessageKey = "popupShowMessage"
+    private static let popupShowCaptureTargetKey = "popupShowCaptureTarget"
+    private static let popupShowSettingsButtonKey = "popupShowSettingsButton"
+    private static let popupShowControlButtonKey = "popupShowControlButton"
+    private static let popupShowReportButtonKey = "popupShowReportButton"
+    private static let popupShowTasksButtonKey = "popupShowTasksButton"
+    private static let popupIdleTextKey = "popupIdleText"
+    private static let popupRecordingTextKey = "popupRecordingText"
+    private static let popupSettingsTextKey = "popupSettingsText"
+    private static let popupReportTextKey = "popupReportText"
+    private static let popupTasksTextKey = "popupTasksText"
+    private static let popupStartTextKey = "popupStartText"
+    private static let popupStopTextKey = "popupStopText"
+    private static let slackWorkspaceKey = "slackWorkspace"
+    private static let slackDailyChannelKey = "slackDailyChannel"
+    private static let slackReporterNameKey = "slackReporterName"
+    private static let slackDailyThreadTimestampKey = "slackDailyThreadTimestamp"
+    private static let gmailNottaQueryKey = "gmailNottaQuery"
+    private static let taskLedgerPathKey = "taskLedgerPath"
+    private static let taskHubURLKey = "taskHubURL"
+    private static let githubIssueRepositoriesKey = "githubIssueRepositories"
+    private static let extraReportReferencesKey = "extraReportReferences"
     private static let startMessageIndexKey = "startMessageIndex"
     private static let stopMessageIndexKey = "stopMessageIndex"
     private static let reporterNameKey = "reporterName"
@@ -233,6 +258,61 @@ enum RecorderSettings {
         }
     }
 
+    static var popupPreset: String {
+        get { savedText(forKey: popupPresetKey, fallback: "standard") }
+        set { defaults.set(["standard", "minimal", "custom"].contains(newValue) ? newValue : "standard", forKey: popupPresetKey) }
+    }
+
+    static var popupWidth: CGFloat {
+        get {
+            let value = defaults.double(forKey: popupWidthKey)
+            return value > 0 ? CGFloat(min(max(value, 240), 900)) : 520
+        }
+        set { defaults.set(Double(min(max(newValue, 240), 900)), forKey: popupWidthKey) }
+    }
+
+    static var popupShowTitle: Bool { get { boolSetting(popupShowTitleKey, fallback: true) } set { defaults.set(newValue, forKey: popupShowTitleKey) } }
+    static var popupShowMessage: Bool { get { boolSetting(popupShowMessageKey, fallback: true) } set { defaults.set(newValue, forKey: popupShowMessageKey) } }
+    static var popupShowCaptureTarget: Bool { get { boolSetting(popupShowCaptureTargetKey, fallback: true) } set { defaults.set(newValue, forKey: popupShowCaptureTargetKey) } }
+    static var popupShowSettingsButton: Bool { get { boolSetting(popupShowSettingsButtonKey, fallback: true) } set { defaults.set(newValue, forKey: popupShowSettingsButtonKey) } }
+    static var popupShowControlButton: Bool { get { boolSetting(popupShowControlButtonKey, fallback: true) } set { defaults.set(newValue, forKey: popupShowControlButtonKey) } }
+    static var popupShowReportButton: Bool { get { boolSetting(popupShowReportButtonKey, fallback: false) } set { defaults.set(newValue, forKey: popupShowReportButtonKey) } }
+    static var popupShowTasksButton: Bool { get { boolSetting(popupShowTasksButtonKey, fallback: false) } set { defaults.set(newValue, forKey: popupShowTasksButtonKey) } }
+
+    static var popupIdleText: String { get { savedText(forKey: popupIdleTextKey, fallback: "1FPS 待機中") } set { defaults.set(newValue, forKey: popupIdleTextKey) } }
+    static var popupRecordingText: String { get { savedText(forKey: popupRecordingTextKey, fallback: "録画") } set { defaults.set(newValue, forKey: popupRecordingTextKey) } }
+    static var popupSettingsText: String { get { savedText(forKey: popupSettingsTextKey, fallback: "設定") } set { defaults.set(newValue, forKey: popupSettingsTextKey) } }
+    static var popupReportText: String { get { savedText(forKey: popupReportTextKey, fallback: "日報") } set { defaults.set(newValue, forKey: popupReportTextKey) } }
+    static var popupTasksText: String { get { savedText(forKey: popupTasksTextKey, fallback: "タスク") } set { defaults.set(newValue, forKey: popupTasksTextKey) } }
+    static var popupStartText: String { get { savedText(forKey: popupStartTextKey, fallback: "開始") } set { defaults.set(newValue, forKey: popupStartTextKey) } }
+    static var popupStopText: String { get { savedText(forKey: popupStopTextKey, fallback: "停止") } set { defaults.set(newValue, forKey: popupStopTextKey) } }
+
+    static var slackWorkspace: String { get { savedText(forKey: slackWorkspaceKey, fallback: "Visitas") } set { defaults.set(newValue, forKey: slackWorkspaceKey) } }
+    static var slackDailyChannel: String { get { savedText(forKey: slackDailyChannelKey, fallback: "#日報") } set { defaults.set(newValue, forKey: slackDailyChannelKey) } }
+    static var slackReporterName: String { get { savedText(forKey: slackReporterNameKey, fallback: reporterName) } set { defaults.set(newValue, forKey: slackReporterNameKey) } }
+    static var slackDailyThreadTimestamp: String { get { defaults.string(forKey: slackDailyThreadTimestampKey) ?? "" } set { defaults.set(newValue, forKey: slackDailyThreadTimestampKey) } }
+    static var gmailNottaQuery: String { get { savedText(forKey: gmailNottaQueryKey, fallback: "from:(notta.ai) (Visitas OR Visit-as OR AINS OR devmtg)") } set { defaults.set(newValue, forKey: gmailNottaQueryKey) } }
+    static var taskLedgerPath: String {
+        get {
+            let saved = savedText(
+                forKey: taskLedgerPathKey,
+                fallback: NSString(string: "~/visitas-tasks/tasks.json").expandingTildeInPath
+            )
+            if saved == "/Users/matsudsaisei/Documents/Codex/visitas-task-tracker/tasks.md" {
+                return "/Users/matsudsaisei/visitas-tasks/tasks.json"
+            }
+            return saved
+        }
+        set { defaults.set(newValue, forKey: taskLedgerPathKey) }
+    }
+    static var taskHubURL: String { get { savedText(forKey: taskHubURLKey, fallback: "http://127.0.0.1:7700") } set { defaults.set(newValue, forKey: taskHubURLKey) } }
+    static var githubIssueRepositories: String { get { savedText(forKey: githubIssueRepositoriesKey, fallback: "visit-as/Visitas\nvisit-as/AINS") } set { defaults.set(newValue, forKey: githubIssueRepositoriesKey) } }
+    static var extraReportReferences: String { get { defaults.string(forKey: extraReportReferencesKey) ?? "" } set { defaults.set(newValue, forKey: extraReportReferencesKey) } }
+
+    private static func boolSetting(_ key: String, fallback: Bool) -> Bool {
+        defaults.object(forKey: key) == nil ? fallback : defaults.bool(forKey: key)
+    }
+
     static func nextStartMessageIndex(modulo: Int) -> Int {
         nextIndex(forKey: startMessageIndexKey, modulo: modulo)
     }
@@ -361,6 +441,18 @@ struct ReportSubmissionResult {
     var minutes: Int
 }
 
+struct ReportSubmissionDestinations: Codable {
+    var uploadVideoToDrive: Bool
+    var updateDriveReport: Bool
+    var postToSlack: Bool
+
+    init(uploadVideoToDrive: Bool = true, updateDriveReport: Bool = true, postToSlack: Bool = false) {
+        self.uploadVideoToDrive = uploadVideoToDrive
+        self.updateDriveReport = updateDriveReport
+        self.postToSlack = postToSlack
+    }
+}
+
 struct StoredReportEntry: Codable {
     var date: String
     var displayDate: String
@@ -399,6 +491,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var lockFileHandle: FileHandle?
     private var settingsWindowController: SettingsWindowController?
     private var reportWindowController: ReportSubmissionWindowController?
+    private var batchReportWindowController: DailyReportBatchWindowController?
+    private var taskWindowController: VisitasTaskWindowController?
     private var overlayMessage = ""
     private var manualReadyOverlayVisible = false
     private var wasRecordingDisplayState = false
@@ -449,6 +543,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             },
             settingsAction: { [weak self] in
                 self?.openSettings()
+            },
+            reportAction: { [weak self] in
+                self?.openBatchReportSubmission()
+            },
+            tasksAction: { [weak self] in
+                self?.openVisitasTasks()
             }
         )
         setupCommandNotifications()
@@ -547,11 +647,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         captureTargetItem.submenu = makeCaptureTargetMenu()
         menu.addItem(captureTargetItem)
 
-        let reportItem = NSMenuItem(title: "業務報告を提出...", action: #selector(openReportSubmission), keyEquivalent: "")
+        let reportItem = NSMenuItem(title: "1日分の業務報告を提出...", action: #selector(openReportSubmission), keyEquivalent: "")
         reportItem.target = self
         reportItem.isHidden = !RecorderSettings.showReportMenu
         reportMenuItem = reportItem
         menu.addItem(reportItem)
+
+        let batchReportItem = NSMenuItem(title: "今月の未提出日をまとめて...", action: #selector(openBatchReportSubmission), keyEquivalent: "")
+        batchReportItem.target = self
+        menu.addItem(batchReportItem)
+
+        let tasksItem = NSMenuItem(title: "Visitasタスク...", action: #selector(openVisitasTasks), keyEquivalent: "")
+        tasksItem.target = self
+        menu.addItem(tasksItem)
 
         let settingsItem = NSMenuItem(title: "設定...", action: #selector(openSettings), keyEquivalent: "")
         settingsItem.target = self
@@ -869,6 +977,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             openSettings()
         case "report":
             openReportSubmission()
+        case "batchReport":
+            openBatchReportSubmission()
+        case "tasks":
+            openVisitasTasks()
         case "quit":
             quit()
         case "showOverlay":
@@ -1023,6 +1135,50 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.setActivationPolicy(.regular)
         NSApp.activate(ignoringOtherApps: true)
         reportWindowController?.showWindow(nil)
+    }
+
+    @objc private func openBatchReportSubmission() {
+        log("Batch report submission requested")
+        if recorder.isRecording {
+            recorder.flushCurrentSegment()
+        }
+        let dates = OneFPSRecorder.unsubmittedReportDates()
+        guard !dates.isEmpty else {
+            showAlert("今月は、動画があり未提出になっている日がありません。")
+            return
+        }
+        batchReportWindowController = DailyReportBatchWindowController(dates: dates) { [weak self] forms, destinations in
+            DispatchQueue.global(qos: .userInitiated).async {
+                var completed: [String] = []
+                var failures: [String] = []
+                let formatter = DateFormatter()
+                formatter.dateFormat = "yyyy-MM-dd"
+                for form in forms {
+                    do {
+                        _ = try OneFPSRecorder.submitReport(form, destinations: destinations)
+                        completed.append(formatter.string(from: form.date))
+                    } catch {
+                        failures.append("\(formatter.string(from: form.date)): \(error.localizedDescription)")
+                    }
+                }
+                DispatchQueue.main.async {
+                    var message = "\(completed.count)日分の処理が完了しました。"
+                    if !failures.isEmpty {
+                        message += "\n\n未完了:\n" + failures.joined(separator: "\n")
+                    }
+                    self?.showAlert(message)
+                }
+            }
+        }
+        NSApp.setActivationPolicy(.regular)
+        batchReportWindowController?.showWindow(nil)
+    }
+
+    @objc private func openVisitasTasks() {
+        if taskWindowController == nil {
+            taskWindowController = VisitasTaskWindowController()
+        }
+        taskWindowController?.showWindow(nil)
     }
 
     private func bringReportWindowToFront() {
@@ -1337,11 +1493,11 @@ final class ReportSubmissionWindowController: NSWindowController, NSWindowDelega
             ("日付", dateField, "yyyy-MM-dd"),
             ("担当者", reporterField, ""),
             ("業務プラン", workPlanField, ""),
-            ("業務内容", workContentField, ""),
+            ("✅ やった", workContentField, ""),
             ("業務動画リンク", videoLinkField, "Drive共有リンクを取得できたら貼る"),
-            ("次回までのTask", nextTaskField, ""),
+            ("➡️ 明日", nextTaskField, ""),
             ("業務は順調ですか？", statusField, ""),
-            ("Visitasへのメッセージ", messageField, "")
+            ("🚧 詰まった / 判断待ち", messageField, "無ければ「なし」")
         ]
 
         var y = 360
@@ -1543,11 +1699,15 @@ final class RecordingOverlay {
     private let secondaryStopButton = NSButton(title: "停止", target: nil, action: nil)
     private let captureTargetPopup = NSPopUpButton(frame: .zero, pullsDown: false)
     private let settingsButton = NSButton(title: "設定", target: nil, action: nil)
+    private let reportButton = NSButton(title: "日報", target: nil, action: nil)
+    private let tasksButton = NSButton(title: "タスク", target: nil, action: nil)
     private let startAction: () -> Void
     private let stopAction: () -> Void
     private let resumeAction: () -> Void
     private let stopPausedAction: () -> Void
     private let settingsAction: () -> Void
+    private let reportAction: () -> Void
+    private let tasksAction: () -> Void
     private var buttonMode: ButtonMode = .stop
     private var glowTimer: Timer?
     private var glowHue: CGFloat = 0
@@ -1563,13 +1723,17 @@ final class RecordingOverlay {
         stopAction: @escaping () -> Void,
         resumeAction: @escaping () -> Void,
         stopPausedAction: @escaping () -> Void,
-        settingsAction: @escaping () -> Void
+        settingsAction: @escaping () -> Void,
+        reportAction: @escaping () -> Void,
+        tasksAction: @escaping () -> Void
     ) {
         self.startAction = startAction
         self.stopAction = stopAction
         self.resumeAction = resumeAction
         self.stopPausedAction = stopPausedAction
         self.settingsAction = settingsAction
+        self.reportAction = reportAction
+        self.tasksAction = tasksAction
 
         panel = NSPanel(
             contentRect: NSRect(x: 0, y: 0, width: 520, height: 92),
@@ -1642,6 +1806,16 @@ final class RecordingOverlay {
         settingsButton.bezelStyle = .rounded
         settingsButton.font = NSFont.systemFont(ofSize: 11, weight: .medium)
 
+        reportButton.target = self
+        reportButton.action = #selector(reportPressed)
+        reportButton.bezelStyle = .rounded
+        reportButton.font = NSFont.systemFont(ofSize: 11, weight: .medium)
+
+        tasksButton.target = self
+        tasksButton.action = #selector(tasksPressed)
+        tasksButton.bezelStyle = .rounded
+        tasksButton.font = NSFont.systemFont(ofSize: 11, weight: .medium)
+
         root.addSubview(statusDot)
         root.addSubview(titleLabel)
         root.addSubview(scoreLabel)
@@ -1650,24 +1824,27 @@ final class RecordingOverlay {
         root.addSubview(secondaryStopButton)
         root.addSubview(captureTargetPopup)
         root.addSubview(settingsButton)
+        root.addSubview(reportButton)
+        root.addSubview(tasksButton)
         panel.contentView = root
         refreshCaptureTargets()
-        layoutSubviews()
+        applyCustomization()
     }
 
     func showReady(message: String) {
-        titleLabel.stringValue = "1FPS 待機中"
+        titleLabel.stringValue = RecorderSettings.popupIdleText
         scoreLabel.stringValue = ""
         scoreLabel.isHidden = true
         messageLabel.stringValue = message
         statusDot.layer?.backgroundColor = NSColor.systemBlue.cgColor
         statusDot.layer?.shadowColor = NSColor.systemBlue.cgColor
         stopButton.isEnabled = true
-        stopButton.title = "開始"
+        stopButton.title = RecorderSettings.popupStartText
         stopButton.contentTintColor = .systemBlue
         secondaryStopButton.isHidden = true
         buttonMode = .start
         setGlowEnabled(false)
+        applyCustomization()
         show()
     }
 
@@ -1678,18 +1855,19 @@ final class RecordingOverlay {
         glow: Bool,
         revealOnMainDisplay: Bool = false
     ) {
-        titleLabel.stringValue = String(format: "録画 %02d:%02d", elapsedSeconds / 60, elapsedSeconds % 60)
+        titleLabel.stringValue = String(format: "%@ %02d:%02d", RecorderSettings.popupRecordingText, elapsedSeconds / 60, elapsedSeconds % 60)
         scoreLabel.stringValue = scoreText ?? ""
         scoreLabel.isHidden = scoreText == nil
         messageLabel.stringValue = message
         statusDot.layer?.backgroundColor = NSColor.systemRed.cgColor
         statusDot.layer?.shadowColor = NSColor.systemRed.cgColor
         stopButton.isEnabled = true
-        stopButton.title = "停止"
+        stopButton.title = RecorderSettings.popupStopText
         stopButton.contentTintColor = .systemRed
         secondaryStopButton.isHidden = true
         buttonMode = .stop
         setGlowEnabled(glow)
+        applyCustomization()
         show(ignoringSavedOrigin: revealOnMainDisplay)
     }
 
@@ -1706,6 +1884,7 @@ final class RecordingOverlay {
         secondaryStopButton.isHidden = true
         buttonMode = .stop
         setGlowEnabled(false)
+        applyCustomization()
         show()
     }
 
@@ -1725,6 +1904,7 @@ final class RecordingOverlay {
         secondaryStopButton.contentTintColor = .systemRed
         buttonMode = .resume
         setGlowEnabled(false)
+        applyCustomization()
         show()
     }
 
@@ -1752,15 +1932,84 @@ final class RecordingOverlay {
         panel.orderFrontRegardless()
     }
 
-    private func layoutSubviews() {
+    func applyCustomization() {
+        let preset = RecorderSettings.popupPreset
+        let minimal = preset == "minimal"
+        let isCustom = preset == "custom"
+        let showTitle = !minimal && (!isCustom || RecorderSettings.popupShowTitle)
+        let showMessage = !minimal && (!isCustom || RecorderSettings.popupShowMessage)
+        let showCapture = !minimal && (!isCustom || RecorderSettings.popupShowCaptureTarget)
+        let showSettings = !minimal && (!isCustom || RecorderSettings.popupShowSettingsButton)
+        let showControl = !minimal && (!isCustom || RecorderSettings.popupShowControlButton)
+        let showReport = !minimal && RecorderSettings.popupShowReportButton
+        let showTasks = !minimal && RecorderSettings.popupShowTasksButton
+
+        settingsButton.title = RecorderSettings.popupSettingsText
+        reportButton.title = RecorderSettings.popupReportText
+        tasksButton.title = RecorderSettings.popupTasksText
+        func buttonWidth(_ button: NSButton, minimum: CGFloat = 76) -> CGFloat {
+            let font = button.font ?? NSFont.systemFont(ofSize: 11)
+            let textWidth = (button.title as NSString).size(withAttributes: [.font: font]).width
+            return min(180, max(minimum, ceil(textWidth) + 34))
+        }
+        let settingsWidth = buttonWidth(settingsButton)
+        let reportWidth = buttonWidth(reportButton)
+        let tasksWidth = buttonWidth(tasksButton)
+        let controlWidth = buttonWidth(stopButton, minimum: 58)
+
+        var bottomControlsWidth: CGFloat = 0
+        if showCapture { bottomControlsWidth += 178 }
+        if showSettings { bottomControlsWidth += settingsWidth }
+        if showReport { bottomControlsWidth += reportWidth }
+        if showTasks { bottomControlsWidth += tasksWidth }
+        let requestedWidth: CGFloat = minimal ? 44 : (isCustom ? RecorderSettings.popupWidth : 520)
+        let width = minimal ? requestedWidth : max(requestedWidth, bottomControlsWidth + (showMessage ? 140 : 30))
+        let height: CGFloat = minimal ? 34 : 92
+        panel.setContentSize(NSSize(width: width, height: height))
+        root.frame = NSRect(x: 0, y: 0, width: width, height: height)
+        if panel.isVisible, let visibleFrame = (panel.screen ?? NSScreen.main)?.visibleFrame {
+            var origin = panel.frame.origin
+            origin.x = min(max(origin.x, visibleFrame.minX), max(visibleFrame.minX, visibleFrame.maxX - width))
+            origin.y = min(max(origin.y, visibleFrame.minY), max(visibleFrame.minY, visibleFrame.maxY - height))
+            panel.setFrameOrigin(origin)
+        }
+
+        titleLabel.isHidden = !showTitle
+        scoreLabel.isHidden = !showTitle || scoreLabel.stringValue.isEmpty
+        messageLabel.isHidden = !showMessage
+        captureTargetPopup.isHidden = !showCapture
+        settingsButton.isHidden = !showSettings
+        reportButton.isHidden = !showReport
+        tasksButton.isHidden = !showTasks
+        stopButton.isHidden = !showControl
+        secondaryStopButton.isHidden = !(buttonMode == .resume && showControl)
+
+        if minimal {
+            statusDot.frame = NSRect(x: 17.5, y: 12.5, width: 9, height: 9)
+            return
+        }
+
         statusDot.frame = NSRect(x: 16, y: 65, width: 9, height: 9)
-        titleLabel.frame = NSRect(x: 34, y: 60, width: 118, height: 18)
-        scoreLabel.frame = NSRect(x: 154, y: 60, width: 104, height: 18)
-        messageLabel.frame = NSRect(x: 16, y: 20, width: 224, height: 18)
-        captureTargetPopup.frame = NSRect(x: 246, y: 14, width: 172, height: 28)
-        settingsButton.frame = NSRect(x: 424, y: 14, width: 80, height: 28)
-        stopButton.frame = NSRect(x: 456, y: 57, width: 48, height: 26)
-        secondaryStopButton.frame = NSRect(x: 398, y: 57, width: 48, height: 26)
+        titleLabel.frame = NSRect(x: 34, y: 60, width: max(118, width - 250), height: 18)
+        scoreLabel.frame = NSRect(x: max(154, width - 366), y: 60, width: 104, height: 18)
+        var topRight = width - 16
+        if showControl {
+            stopButton.frame = NSRect(x: topRight - controlWidth, y: 57, width: controlWidth, height: 26)
+            topRight -= controlWidth + 10
+            secondaryStopButton.frame = NSRect(x: topRight - 58, y: 57, width: 58, height: 26)
+        }
+
+        var x = width - 16
+        func place(_ view: NSView, width controlWidth: CGFloat, shown: Bool) {
+            guard shown else { return }
+            x -= controlWidth
+            view.frame = NSRect(x: x, y: 14, width: controlWidth - 6, height: 28)
+        }
+        place(tasksButton, width: tasksWidth, shown: showTasks)
+        place(reportButton, width: reportWidth, shown: showReport)
+        place(settingsButton, width: settingsWidth, shown: showSettings)
+        place(captureTargetPopup, width: 178, shown: showCapture)
+        messageLabel.frame = NSRect(x: 16, y: 20, width: max(40, x - 26), height: 18)
     }
 
     func refreshCaptureTargets() {
@@ -1789,6 +2038,16 @@ final class RecordingOverlay {
     @objc private func settingsPressed() {
         saveCurrentOrigin()
         settingsAction()
+    }
+
+    @objc private func reportPressed() {
+        saveCurrentOrigin()
+        reportAction()
+    }
+
+    @objc private func tasksPressed() {
+        saveCurrentOrigin()
+        tasksAction()
     }
 
     private func setGlowEnabled(_ enabled: Bool) {
@@ -3617,7 +3876,10 @@ final class OneFPSRecorder: NSObject {
         return (score.seconds, score.earnedYen)
     }
 
-    static func submitReport(_ form: ReportSubmissionForm) throws -> ReportSubmissionResult {
+    static func submitReport(
+        _ form: ReportSubmissionForm,
+        destinations: ReportSubmissionDestinations = ReportSubmissionDestinations()
+    ) throws -> ReportSubmissionResult {
         _ = syncDerivedLogs(for: form.date)
         let videoURL = existingDailyVideoURL(for: form.date)
         guard FileManager.default.fileExists(atPath: videoURL.path) else {
@@ -3666,8 +3928,26 @@ final class OneFPSRecorder: NSObject {
         try syncGoogleReportIfPossible(
             form: form,
             entriesURL: reportDataURL,
-            submittedVideoURL: submittedVideoURL
+            submittedVideoURL: submittedVideoURL,
+            uploadVideo: destinations.uploadVideoToDrive,
+            updateDocument: destinations.updateDriveReport
         )
+
+        recordSubmissionReceipt(
+            date: form.date,
+            videoUploadedToDrive: destinations.uploadVideoToDrive && !form.driveFolderURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+            driveReportUpdated: destinations.updateDriveReport && !form.driveFolderURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+            slackPosted: false
+        )
+        if destinations.postToSlack {
+            try postSlackDailyReport(form: form)
+            recordSubmissionReceipt(
+                date: form.date,
+                videoUploadedToDrive: false,
+                driveReportUpdated: false,
+                slackPosted: true
+            )
+        }
 
         return ReportSubmissionResult(reportURL: docxReportURL, submittedVideoURL: submittedVideoURL, minutes: minutes)
     }
@@ -3675,23 +3955,33 @@ final class OneFPSRecorder: NSObject {
     private static func syncGoogleReportIfPossible(
         form: ReportSubmissionForm,
         entriesURL: URL,
-        submittedVideoURL: URL
+        submittedVideoURL: URL,
+        uploadVideo: Bool,
+        updateDocument: Bool
     ) throws {
         let folderURL = form.driveFolderURL.trimmingCharacters(in: .whitespacesAndNewlines)
         let videoFolderURL = form.videoDriveFolderURL.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !folderURL.isEmpty else { return }
+        guard !folderURL.isEmpty, uploadVideo || updateDocument else { return }
         let scriptURL = try googleReportSyncScriptURL()
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/python3")
-        process.arguments = [
+        var arguments = [
             scriptURL.path,
             "--folder-url", folderURL,
             "--video-folder-url", videoFolderURL,
             "--document-name", reportDocumentName(for: form.date),
             "--template", expandedPath(RecorderSettings.reportTemplatePath),
-            "--entries-json", entriesURL.path,
-            "--video", submittedVideoURL.path
+            "--entries-json", entriesURL.path
         ]
+        if uploadVideo {
+            arguments.append(contentsOf: ["--video", submittedVideoURL.path])
+        } else {
+            arguments.append("--skip-video")
+        }
+        if !updateDocument {
+            arguments.append("--skip-document")
+        }
+        process.arguments = arguments
         let pipe = Pipe()
         process.standardError = pipe
         process.standardOutput = pipe
@@ -4054,7 +4344,32 @@ enum RecorderError: LocalizedError {
     }
 }
 
-if CommandLine.arguments.count >= 3, CommandLine.arguments[1] == "--command" {
+if CommandLine.arguments.count >= 2, CommandLine.arguments[1] == "--report-config" {
+    print(OneFPSRecorder.reportAutomationConfigurationJSON())
+} else if CommandLine.arguments.count >= 2, CommandLine.arguments[1] == "--report-candidates" {
+    let formatter = DateFormatter()
+    formatter.dateFormat = "yyyy-MM"
+    let date = CommandLine.arguments.count >= 3
+        ? (formatter.date(from: CommandLine.arguments[2]) ?? Date())
+        : Date()
+    print(OneFPSRecorder.reportCandidatesJSON(inMonthContaining: date))
+} else if CommandLine.arguments.count >= 3, CommandLine.arguments[1] == "--submit-report-json" {
+    do {
+        print(try OneFPSRecorder.submitSkillRequest(at: URL(fileURLWithPath: CommandLine.arguments[2])))
+    } catch {
+        fputs("\(error.localizedDescription)\n", stderr)
+        exit(1)
+    }
+} else if CommandLine.arguments.count >= 3, CommandLine.arguments[1] == "--mark-slack-posted-date" {
+    let formatter = DateFormatter()
+    formatter.dateFormat = "yyyy-MM-dd"
+    guard let date = formatter.date(from: CommandLine.arguments[2]) else {
+        fputs("日付は yyyy-MM-dd で指定してください。\n", stderr)
+        exit(2)
+    }
+    OneFPSRecorder.markSlackPosted(on: date)
+    print("marked=\(CommandLine.arguments[2])")
+} else if CommandLine.arguments.count >= 3, CommandLine.arguments[1] == "--command" {
     let appSupportDirectory = FileManager.default.homeDirectoryForCurrentUser
         .appendingPathComponent("Library", isDirectory: true)
         .appendingPathComponent("Application Support", isDirectory: true)

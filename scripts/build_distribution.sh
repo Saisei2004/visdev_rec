@@ -107,6 +107,8 @@ chmod +x "$APP_DIR/Contents/MacOS/$APP_NAME" "$APP_DIR/Contents/MacOS/${APP_NAME
 chmod +x "$APP_DIR/Contents/Resources/ffmpeg" "$APP_DIR/Contents/Resources/ffprobe"
 cp "$ROOT_DIR/scripts/install_distributed_app.sh" "$PACKAGE_DIR/Install-OneFPSRecorder.command"
 chmod +x "$PACKAGE_DIR/Install-OneFPSRecorder.command"
+mkdir -p "$PACKAGE_DIR/Agent-Skills"
+cp -R "$ROOT_DIR/skills/visitas-daily-report" "$PACKAGE_DIR/Agent-Skills/visitas-daily-report"
 
 cat > "$APP_DIR/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>

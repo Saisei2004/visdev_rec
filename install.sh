@@ -163,6 +163,7 @@ pkill -f "$INSTALLED_APP/Contents/MacOS/$APP_NAME" 2>/dev/null || true
 launchctl bootout "gui/$(id -u)" "$AGENT_PLIST" 2>/dev/null || true
 launchctl bootstrap "gui/$(id -u)" "$AGENT_PLIST"
 launchctl kickstart -k "gui/$(id -u)/local.codex.OneFPSRecorder"
+"$ROOT_DIR/scripts/install_agent_skills.sh"
 rm -rf "$APP_DIR"
 
 echo "インストールして起動しました: $INSTALLED_APP"

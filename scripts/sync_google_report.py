@@ -291,6 +291,8 @@ def main():
     parser.add_argument("--entries-json", required=True)
     parser.add_argument("--template")
     parser.add_argument("--video")
+    parser.add_argument("--skip-video", action="store_true")
+    parser.add_argument("--skip-document", action="store_true")
     parser.add_argument("--output-json")
     args = parser.parse_args()
 
@@ -305,21 +307,30 @@ def main():
     with tempfile.TemporaryDirectory() as tmp:
         template_path = Path(tmp) / "drive-template.docx"
         output_path = Path(tmp) / "drive-updated.docx"
-        document = find_report_document(token, folder_id, args.document_name)
+        document = None if args.skip_document else find_report_document(token, folder_id, args.document_name)
         video_result = None
         entries_path = Path(args.entries_json)
-        if args.video:
+        if args.video and not args.skip_video:
             video_result = upload_video(token, video_folder_id, args.video)
             misplaced_video = find_drive_file(token, folder_id, Path(args.video).name)
             if misplaced_video and misplaced_video.get("id") != video_result.get("id"):
                 trash_file(token, misplaced_video["id"])
             entries = json.loads(entries_path.read_text(encoding="utf-8"))
             if entries:
-                entries[-1]["videoLink"] = video_result.get("webViewLink") or video_result.get("name") or ""
+                video_name = Path(args.video).name
+                matching = [entry for entry in entries if entry.get("videoFileName") == video_name]
+                target = matching[-1] if matching else entries[-1]
+                target["videoLink"] = video_result.get("webViewLink") or video_result.get("name") or ""
                 args_entries_path = Path(args.entries_json)
                 args_entries_path.write_text(json.dumps(entries, ensure_ascii=False, indent=2), encoding="utf-8")
                 entries_path = Path(tmp) / "entries-with-video-link.json"
                 entries_path.write_text(json.dumps(entries, ensure_ascii=False, indent=2), encoding="utf-8")
+        if args.skip_document:
+            result = {"document": None, "video": video_result}
+            if args.output_json:
+                Path(args.output_json).write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
+            print(json.dumps(result, ensure_ascii=False, indent=2))
+            return
         if args.template:
             template_path = Path(args.template).expanduser()
             if not template_path.exists():

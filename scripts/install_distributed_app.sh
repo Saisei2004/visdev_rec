@@ -26,6 +26,14 @@ rm -rf "$INSTALLED_APP"
 ditto "$SOURCE_APP" "$INSTALLED_APP"
 xattr -dr com.apple.quarantine "$INSTALLED_APP" 2>/dev/null || true
 
+if [[ -d "$SCRIPT_DIR/Agent-Skills/visitas-daily-report" ]]; then
+  for target in "$HOME/.agents/skills/visitas-daily-report" "$HOME/.claude/skills/visitas-daily-report"; do
+    mkdir -p "$(dirname "$target")"
+    rm -rf "$target"
+    ditto "$SCRIPT_DIR/Agent-Skills/visitas-daily-report" "$target"
+  done
+fi
+
 cat > "$AGENT_PLIST" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">

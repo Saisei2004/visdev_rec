@@ -22,6 +22,31 @@ enum SharedSettings {
     private static let autoResumeOnMouseMoveKey = "autoResumeOnMouseMove"
     private static let mouseIdleMinutesKey = "mouseIdleMinutes"
     private static let captureDisplayIDKey = "captureDisplayID"
+    private static let popupPresetKey = "popupPreset"
+    private static let popupWidthKey = "popupWidth"
+    private static let popupShowTitleKey = "popupShowTitle"
+    private static let popupShowMessageKey = "popupShowMessage"
+    private static let popupShowCaptureTargetKey = "popupShowCaptureTarget"
+    private static let popupShowSettingsButtonKey = "popupShowSettingsButton"
+    private static let popupShowControlButtonKey = "popupShowControlButton"
+    private static let popupShowReportButtonKey = "popupShowReportButton"
+    private static let popupShowTasksButtonKey = "popupShowTasksButton"
+    private static let popupIdleTextKey = "popupIdleText"
+    private static let popupRecordingTextKey = "popupRecordingText"
+    private static let popupSettingsTextKey = "popupSettingsText"
+    private static let popupReportTextKey = "popupReportText"
+    private static let popupTasksTextKey = "popupTasksText"
+    private static let popupStartTextKey = "popupStartText"
+    private static let popupStopTextKey = "popupStopText"
+    private static let slackWorkspaceKey = "slackWorkspace"
+    private static let slackDailyChannelKey = "slackDailyChannel"
+    private static let slackReporterNameKey = "slackReporterName"
+    private static let slackDailyThreadTimestampKey = "slackDailyThreadTimestamp"
+    private static let gmailNottaQueryKey = "gmailNottaQuery"
+    private static let taskLedgerPathKey = "taskLedgerPath"
+    private static let taskHubURLKey = "taskHubURL"
+    private static let githubIssueRepositoriesKey = "githubIssueRepositories"
+    private static let extraReportReferencesKey = "extraReportReferences"
     private static let reporterNameKey = "reporterName"
     private static let driveFolderURLKey = "driveFolderURL"
     private static let videoDriveFolderURLKey = "videoDriveFolderURL"
@@ -198,6 +223,48 @@ enum SharedSettings {
             }
             defaults.synchronize()
         }
+    }
+
+    static var popupPreset: String { get { savedText(forKey: popupPresetKey, fallback: "standard") } set { defaults.set(newValue, forKey: popupPresetKey) } }
+    static var popupWidth: CGFloat { get { let value = defaults.double(forKey: popupWidthKey); return value > 0 ? CGFloat(min(max(value, 240), 900)) : 520 } set { defaults.set(Double(min(max(newValue, 240), 900)), forKey: popupWidthKey) } }
+    static var popupShowTitle: Bool { get { boolSetting(popupShowTitleKey, fallback: true) } set { defaults.set(newValue, forKey: popupShowTitleKey) } }
+    static var popupShowMessage: Bool { get { boolSetting(popupShowMessageKey, fallback: true) } set { defaults.set(newValue, forKey: popupShowMessageKey) } }
+    static var popupShowCaptureTarget: Bool { get { boolSetting(popupShowCaptureTargetKey, fallback: true) } set { defaults.set(newValue, forKey: popupShowCaptureTargetKey) } }
+    static var popupShowSettingsButton: Bool { get { boolSetting(popupShowSettingsButtonKey, fallback: true) } set { defaults.set(newValue, forKey: popupShowSettingsButtonKey) } }
+    static var popupShowControlButton: Bool { get { boolSetting(popupShowControlButtonKey, fallback: true) } set { defaults.set(newValue, forKey: popupShowControlButtonKey) } }
+    static var popupShowReportButton: Bool { get { boolSetting(popupShowReportButtonKey, fallback: false) } set { defaults.set(newValue, forKey: popupShowReportButtonKey) } }
+    static var popupShowTasksButton: Bool { get { boolSetting(popupShowTasksButtonKey, fallback: false) } set { defaults.set(newValue, forKey: popupShowTasksButtonKey) } }
+    static var popupIdleText: String { get { savedText(forKey: popupIdleTextKey, fallback: "1FPS 待機中") } set { defaults.set(newValue, forKey: popupIdleTextKey) } }
+    static var popupRecordingText: String { get { savedText(forKey: popupRecordingTextKey, fallback: "録画") } set { defaults.set(newValue, forKey: popupRecordingTextKey) } }
+    static var popupSettingsText: String { get { savedText(forKey: popupSettingsTextKey, fallback: "設定") } set { defaults.set(newValue, forKey: popupSettingsTextKey) } }
+    static var popupReportText: String { get { savedText(forKey: popupReportTextKey, fallback: "日報") } set { defaults.set(newValue, forKey: popupReportTextKey) } }
+    static var popupTasksText: String { get { savedText(forKey: popupTasksTextKey, fallback: "タスク") } set { defaults.set(newValue, forKey: popupTasksTextKey) } }
+    static var popupStartText: String { get { savedText(forKey: popupStartTextKey, fallback: "開始") } set { defaults.set(newValue, forKey: popupStartTextKey) } }
+    static var popupStopText: String { get { savedText(forKey: popupStopTextKey, fallback: "停止") } set { defaults.set(newValue, forKey: popupStopTextKey) } }
+    static var slackWorkspace: String { get { savedText(forKey: slackWorkspaceKey, fallback: "Visitas") } set { defaults.set(newValue, forKey: slackWorkspaceKey) } }
+    static var slackDailyChannel: String { get { savedText(forKey: slackDailyChannelKey, fallback: "#日報") } set { defaults.set(newValue, forKey: slackDailyChannelKey) } }
+    static var slackReporterName: String { get { savedText(forKey: slackReporterNameKey, fallback: reporterName) } set { defaults.set(newValue, forKey: slackReporterNameKey) } }
+    static var slackDailyThreadTimestamp: String { get { defaults.string(forKey: slackDailyThreadTimestampKey) ?? "" } set { defaults.set(newValue, forKey: slackDailyThreadTimestampKey) } }
+    static var gmailNottaQuery: String { get { savedText(forKey: gmailNottaQueryKey, fallback: "from:(notta.ai) (Visitas OR Visit-as OR AINS OR devmtg)") } set { defaults.set(newValue, forKey: gmailNottaQueryKey) } }
+    static var taskLedgerPath: String {
+        get {
+            let saved = savedText(
+                forKey: taskLedgerPathKey,
+                fallback: NSString(string: "~/visitas-tasks/tasks.json").expandingTildeInPath
+            )
+            if saved == "/Users/matsudsaisei/Documents/Codex/visitas-task-tracker/tasks.md" {
+                return "/Users/matsudsaisei/visitas-tasks/tasks.json"
+            }
+            return saved
+        }
+        set { defaults.set(newValue, forKey: taskLedgerPathKey) }
+    }
+    static var taskHubURL: String { get { savedText(forKey: taskHubURLKey, fallback: "http://127.0.0.1:7700") } set { defaults.set(newValue, forKey: taskHubURLKey) } }
+    static var githubIssueRepositories: String { get { savedText(forKey: githubIssueRepositoriesKey, fallback: "visit-as/Visitas\nvisit-as/AINS") } set { defaults.set(newValue, forKey: githubIssueRepositoriesKey) } }
+    static var extraReportReferences: String { get { defaults.string(forKey: extraReportReferencesKey) ?? "" } set { defaults.set(newValue, forKey: extraReportReferencesKey) } }
+
+    private static func boolSetting(_ key: String, fallback: Bool) -> Bool {
+        defaults.object(forKey: key) == nil ? fallback : defaults.bool(forKey: key)
     }
 
     static var reporterName: String {
@@ -404,6 +471,8 @@ final class SettingsDelegate: NSObject, NSApplicationDelegate {
     private var window: NSWindow!
     private var advancedWindow: NSWindow?
     private var reportDefaultsWindow: ReportDefaultsWindowController?
+    private var popupCustomizationWindow: PopupCustomizationWindowController?
+    private var automationSettingsWindow: AutomationSettingsWindowController?
     private var permissionCheckTimer: Timer?
     private let nameField = NSTextField(string: SharedSettings.recordingName)
     private let setupDescriptionLabel = NSTextField(labelWithString: "")
@@ -436,6 +505,9 @@ final class SettingsDelegate: NSObject, NSApplicationDelegate {
     private let advancedButton = NSButton(title: "詳細設定...", target: nil, action: nil)
     private let toggleRecordingButton = NSButton(title: "録画開始/停止", target: nil, action: nil)
     private let showPanelButton = NSButton(title: "パネルを今すぐ表示", target: nil, action: nil)
+    private let popupCustomizationButton = NSButton(title: "ポップアップ編集", target: nil, action: nil)
+    private let visitasTasksButton = NSButton(title: "Visitasタスク", target: nil, action: nil)
+    private let automationSettingsButton = NSButton(title: "日報・参照元...", target: nil, action: nil)
     private let quitAppButton = NSButton(title: "アプリを完全終了", target: nil, action: nil)
 
     private func bundledExecutable(_ name: String) -> URL {
@@ -589,6 +661,16 @@ final class SettingsDelegate: NSObject, NSApplicationDelegate {
         showPanelButton.bezelStyle = .rounded
         showPanelButton.frame = NSRect(x: 284, y: 98, width: 150, height: 30)
 
+        popupCustomizationButton.target = self
+        popupCustomizationButton.action = #selector(openPopupCustomization)
+        popupCustomizationButton.bezelStyle = .rounded
+        popupCustomizationButton.frame = NSRect(x: 444, y: 98, width: 150, height: 30)
+
+        visitasTasksButton.target = self
+        visitasTasksButton.action = #selector(openVisitasTasks)
+        visitasTasksButton.bezelStyle = .rounded
+        visitasTasksButton.frame = NSRect(x: 604, y: 98, width: 126, height: 30)
+
         advancedButton.target = self
         advancedButton.action = #selector(openAdvancedSettings)
         advancedButton.bezelStyle = .rounded
@@ -598,6 +680,11 @@ final class SettingsDelegate: NSObject, NSApplicationDelegate {
         quitAppButton.action = #selector(quitAppPressed)
         quitAppButton.bezelStyle = .rounded
         quitAppButton.frame = NSRect(x: 150, y: 22, width: 140, height: 30)
+
+        automationSettingsButton.target = self
+        automationSettingsButton.action = #selector(openAutomationSettings)
+        automationSettingsButton.bezelStyle = .rounded
+        automationSettingsButton.frame = NSRect(x: 300, y: 22, width: 138, height: 30)
 
         let closeButton = NSButton(title: "閉じる", target: self, action: #selector(closePressed))
         closeButton.bezelStyle = .rounded
@@ -625,8 +712,11 @@ final class SettingsDelegate: NSObject, NSApplicationDelegate {
         content.addSubview(permissionCheckButton)
         content.addSubview(toggleRecordingButton)
         content.addSubview(showPanelButton)
+        content.addSubview(popupCustomizationButton)
+        content.addSubview(visitasTasksButton)
         content.addSubview(advancedButton)
         content.addSubview(quitAppButton)
+        content.addSubview(automationSettingsButton)
         content.addSubview(closeButton)
         content.addSubview(saveButton)
 
@@ -669,6 +759,24 @@ final class SettingsDelegate: NSObject, NSApplicationDelegate {
     @objc private func showPanelPressed() {
         SharedSettings.showOverlay = true
         Self.sendCommand("showOverlay")
+    }
+
+    @objc private func openPopupCustomization() {
+        popupCustomizationWindow = PopupCustomizationWindowController {
+            Self.sendCommand("refreshSettings")
+        }
+        popupCustomizationWindow?.showWindow(nil)
+    }
+
+    @objc private func openAutomationSettings() {
+        automationSettingsWindow = AutomationSettingsWindowController {
+            Self.sendCommand("refreshSettings")
+        }
+        automationSettingsWindow?.showWindow(nil)
+    }
+
+    @objc private func openVisitasTasks() {
+        Self.sendCommand("tasks")
     }
 
     @objc private func checkPermissionPressed() {
