@@ -52,6 +52,25 @@ function Set-ManagedInstructionBlock {
     Set-Content -LiteralPath $Path -Value $next -Encoding utf8NoBOM
 }
 
+function Set-NotificationIconPromoted {
+    param([string]$Tooltip)
+    $root = 'HKCU:\Control Panel\NotifyIconSettings'
+    if (-not (Test-Path -LiteralPath $root)) { return }
+    foreach ($attempt in 1..10) {
+        $key = Get-ChildItem -LiteralPath $root | Where-Object {
+            $properties = Get-ItemProperty -LiteralPath $_.PSPath -ErrorAction SilentlyContinue
+            $properties -and
+                ($properties.PSObject.Properties.Name -contains 'InitialTooltip') -and
+                $properties.InitialTooltip -eq $Tooltip
+        } | Select-Object -First 1
+        if ($key) {
+            New-ItemProperty -LiteralPath $key.PSPath -Name IsPromoted -Value 1 -PropertyType DWord -Force | Out-Null
+            return
+        }
+        Start-Sleep -Milliseconds 500
+    }
+}
+
 if (-not (Get-Command py -ErrorAction SilentlyContinue)) {
     throw 'Python Launcher (py.exe) が必要です。Python 3をインストールしてから再実行してください。'
 }
@@ -101,8 +120,10 @@ Set-ManagedInstructionBlock -Path (Join-Path $env:USERPROFILE '.claude\CLAUDE.md
 
 if (-not $SkipScheduledTasks) {
     $syncLauncher = Join-Path $InstallRoot 'Sync-Visitas-Task-Hub-Hidden.vbs'
+    $trayLauncher = Join-Path $InstallRoot 'Start-Visitas-Task-Hub-Tray-Hidden.vbs'
     $wscript = Join-Path $env:SystemRoot 'System32\wscript.exe'
     if (-not (Test-Path -LiteralPath $syncLauncher)) { throw "非表示同期ランチャーが見つかりません: $syncLauncher" }
+    if (-not (Test-Path -LiteralPath $trayLauncher)) { throw "Task Hub常駐ランチャーが見つかりません: $trayLauncher" }
     if (-not (Test-Path -LiteralPath $wscript)) { throw "Windows Script Hostが見つかりません: $wscript" }
     $action = New-ScheduledTaskAction -Execute $wscript -Argument "//B //Nologo `"$syncLauncher`""
     $settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -ExecutionTimeLimit (New-TimeSpan -Minutes 2)
@@ -113,11 +134,30 @@ if (-not $SkipScheduledTasks) {
 
     $minuteTrigger = New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(1) -RepetitionInterval (New-TimeSpan -Minutes 1) -RepetitionDuration (New-TimeSpan -Days 3650)
     Register-ScheduledTask -TaskName 'Visitas Task Hub - Sync every minute' -Action $action -Trigger $minuteTrigger -Settings $settings -Principal $principal -Force | Out-Null
+
+    $trayAction = New-ScheduledTaskAction -Execute $wscript -Argument "//B //Nologo `"$trayLauncher`""
+    $traySettings = New-ScheduledTaskSettingsSet -StartWhenAvailable -ExecutionTimeLimit ([TimeSpan]::Zero)
+    Register-ScheduledTask -TaskName 'Visitas Task Hub - Tray at logon' -Action $trayAction -Trigger $logonTrigger -Settings $traySettings -Principal $principal -Force | Out-Null
+
+    Start-ScheduledTask -TaskName 'Visitas Task Hub - Tray at logon'
+    Set-NotificationIconPromoted -Tooltip 'Visitas Task Hub'
 }
+
+$startMenu = Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs'
+$openLauncher = Join-Path $InstallRoot 'Open-Visitas-Task-Hub.vbs'
+$wscript = Join-Path $env:SystemRoot 'System32\wscript.exe'
+New-Item -ItemType Directory -Force -Path $startMenu | Out-Null
+$shell = New-Object -ComObject WScript.Shell
+$shortcut = $shell.CreateShortcut((Join-Path $startMenu 'Visitas Task Hub.lnk'))
+$shortcut.TargetPath = $wscript
+$shortcut.Arguments = "//B //Nologo `"$openLauncher`""
+$shortcut.WorkingDirectory = $InstallRoot
+$shortcut.Description = 'Visitas Task Hubを開く'
+$shortcut.Save()
 
 & py -3 (Join-Path $InstallRoot 'taskctl.py') --actor installer sync | Out-Null
 if ($LASTEXITCODE -ne 0) { throw 'インストール後の同期確認に失敗しました。' }
 
 Write-Host "Visitas Task Hubをインストールしました: $InstallRoot"
 Write-Host "Box正典: $resolvedSharedRoot\data\events"
-Write-Host "UI: $InstallRoot\Start-Visitas-Task-Hub.cmd"
+Write-Host 'UI: 通知領域のVisitas Task Hubアイコンをダブルクリック、またはスタートメニューから起動'

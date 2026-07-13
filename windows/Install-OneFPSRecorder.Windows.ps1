@@ -19,6 +19,25 @@ function Test-DdaFfmpeg {
     return $filters -match '\bddagrab\b'
 }
 
+function Set-NotificationIconPromoted {
+    param([string]$Tooltip)
+    $root = 'HKCU:\Control Panel\NotifyIconSettings'
+    if (-not (Test-Path -LiteralPath $root)) { return }
+    foreach ($attempt in 1..10) {
+        $key = Get-ChildItem -LiteralPath $root | Where-Object {
+            $properties = Get-ItemProperty -LiteralPath $_.PSPath -ErrorAction SilentlyContinue
+            $properties -and
+                ($properties.PSObject.Properties.Name -contains 'InitialTooltip') -and
+                $properties.InitialTooltip -eq $Tooltip
+        } | Select-Object -First 1
+        if ($key) {
+            New-ItemProperty -LiteralPath $key.PSPath -Name IsPromoted -Value 1 -PropertyType DWord -Force | Out-Null
+            return
+        }
+        Start-Sleep -Milliseconds 500
+    }
+}
+
 if (-not (Test-DotNet8Sdk)) {
     if (-not (Get-Command winget -ErrorAction SilentlyContinue)) {
         throw '.NET 8 SDKが必要です。wingetも見つからないため自動インストールできません。'
@@ -85,6 +104,7 @@ if (-not $SkipTaskHub) {
 
 if (-not $NoStart) {
     Start-Process -FilePath $executable
+    Set-NotificationIconPromoted -Tooltip 'OneFPSRecorder'
 }
 
 Write-Host "OneFPSRecorder Windowsをインストールしました: $appRoot"
