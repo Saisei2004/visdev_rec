@@ -3,8 +3,9 @@ import tempfile
 import unittest
 from datetime import date
 from pathlib import Path
+from unittest.mock import patch
 
-from report_core import default_config, receipt_for, report_candidates, submit_request
+from report_core import default_config, public_configuration, receipt_for, report_candidates, submit_request
 
 
 class FakePublisher:
@@ -114,6 +115,10 @@ class ReportCoreTest(unittest.TestCase):
             sources = result["configuration"]["sources"]
             self.assertEqual(sources["github_issues"]["status"], "checked")
             self.assertEqual(sources["gmail_notta"]["status"], "not_checked")
+
+    def test_noninteractive_credential_store_is_reported_as_not_configured(self):
+        with patch("report_core.read_secret", side_effect=OSError(1312, "no logon session")):
+            self.assertFalse(public_configuration(default_config())["slackWebhookConfigured"])
 
     def test_receipt_schema_remains_mac_compatible(self):
         with tempfile.TemporaryDirectory() as temporary:

@@ -32,6 +32,16 @@ def utc_now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
 
 
+def secret_configured(target: str) -> bool:
+    """Report credential availability without failing in non-interactive sessions."""
+    if os.name != "nt":
+        return False
+    try:
+        return bool(read_secret(target))
+    except OSError:
+        return False
+
+
 def atomic_json(path: Path, value: Any) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_name(f".{path.name}.{os.getpid()}.tmp")
@@ -211,7 +221,7 @@ def public_configuration(config: dict[str, Any]) -> dict[str, Any]:
         "slackWorkspace": config.get("slackWorkspace", ""),
         "slackDailyChannel": config.get("slackDailyChannel", "#日報"),
         "slackDailyThreadConfigured": bool(config.get("slackDailyThreadTs")),
-        "slackWebhookConfigured": bool(read_secret(str(config.get("slackWebhookCredential", "OneFPSRecorder/SlackWebhook")))) if os.name == "nt" else False,
+        "slackWebhookConfigured": secret_configured(str(config.get("slackWebhookCredential", "OneFPSRecorder/SlackWebhook"))),
         "driveReportFolderConfigured": bool(config.get("driveReportFolderUrl")),
         "videoDriveFolderConfigured": bool(config.get("videoDriveFolderUrl") or config.get("driveReportFolderUrl")),
         "githubIssueRepositories": config.get("githubIssueRepositories", []),

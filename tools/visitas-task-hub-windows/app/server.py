@@ -20,6 +20,12 @@ ROOT = Path(__file__).resolve().parent
 INDEX = ROOT / "index.html"
 
 
+class ExclusiveThreadingHTTPServer(ThreadingHTTPServer):
+    """Prevent two Windows tray server processes from sharing port 7700."""
+
+    allow_reuse_address = False
+
+
 def personal_id(title: str) -> str:
     slug = safe_id(title)[:20].upper()
     if slug == "DEVICE":
@@ -202,7 +208,7 @@ def main() -> None:
     args = parser.parse_args()
     Handler.store.ensure()
     Handler.store.materialize()
-    server = ThreadingHTTPServer(("127.0.0.1", args.port), Handler)
+    server = ExclusiveThreadingHTTPServer(("127.0.0.1", args.port), Handler)
     url = f"http://127.0.0.1:{args.port}/"
     print(f"Visitas Practical Task Hub v2: {url}")
     if args.open:

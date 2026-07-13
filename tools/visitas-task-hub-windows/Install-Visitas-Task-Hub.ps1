@@ -77,7 +77,10 @@ if (-not (Get-Command py -ErrorAction SilentlyContinue)) {
 
 $resolvedSharedRoot = Resolve-SharedRoot -Requested $SharedRoot
 $sourceRoot = Join-Path $PSScriptRoot 'app'
-if (-not (Test-Path -LiteralPath (Join-Path $sourceRoot 'taskctl.py'))) {
+if (
+    -not (Test-Path -LiteralPath (Join-Path $sourceRoot 'taskctl.py')) -or
+    -not (Test-Path -LiteralPath (Join-Path $sourceRoot 'ssh_event_bridge.py'))
+) {
     throw "インストール元が不完全です: $sourceRoot"
 }
 

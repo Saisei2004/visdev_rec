@@ -40,8 +40,35 @@ function Test-TaskHubHealth {
     }
 }
 
+function Stop-TrackedTaskHubServer {
+    param([string]$Reason)
+
+    $process = $script:serverProcess
+    if (-not $process) { return }
+    if ($process.HasExited) {
+        $process.Dispose()
+        $script:serverProcess = $null
+        return
+    }
+
+    Write-TrayLog "stopping server pid=$($process.Id) reason=$Reason"
+    Stop-Process -Id $process.Id -Force -ErrorAction Stop
+    if (-not $process.WaitForExit(5000)) {
+        throw "Task Hub server did not exit within 5 seconds: pid=$($process.Id)"
+    }
+    Write-TrayLog "server stopped pid=$($process.Id) reason=$Reason"
+    $process.Dispose()
+    $script:serverProcess = $null
+}
+
 function Start-TaskHubServer {
     if (Test-TaskHubHealth) { return $true }
+    Start-Sleep -Milliseconds 250
+    if (Test-TaskHubHealth) { return $true }
+
+    if ($script:serverProcess) {
+        Stop-TrackedTaskHubServer -Reason 'health check failed'
+    }
 
     $pythonLauncher = (Get-Command py.exe -ErrorAction Stop).Source
     $pythonExecutable = (& $pythonLauncher -3 -c 'import sys; print(sys.executable)').Trim()
@@ -118,8 +145,10 @@ $script:context = New-Object System.Windows.Forms.ApplicationContext
 $exitItem.add_Click({
     $script:timer.Stop()
     $script:notifyIcon.Visible = $false
-    if ($script:serverProcess -and -not $script:serverProcess.HasExited) {
-        Stop-Process -Id $script:serverProcess.Id -Force -ErrorAction SilentlyContinue
+    try {
+        Stop-TrackedTaskHubServer -Reason 'tray exit'
+    } catch {
+        Write-TrayLog $_.Exception.ToString()
     }
     $script:context.ExitThread()
 })
