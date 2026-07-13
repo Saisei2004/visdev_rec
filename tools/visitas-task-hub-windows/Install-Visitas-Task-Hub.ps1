@@ -100,8 +100,11 @@ Set-ManagedInstructionBlock -Path (Join-Path $env:USERPROFILE '.codex\AGENTS.md'
 Set-ManagedInstructionBlock -Path (Join-Path $env:USERPROFILE '.claude\CLAUDE.md') -Content $instructions
 
 if (-not $SkipScheduledTasks) {
-    $syncScript = Join-Path $InstallRoot 'Sync-Visitas-Task-Hub.cmd'
-    $action = New-ScheduledTaskAction -Execute $env:ComSpec -Argument "/d /c `"$syncScript`""
+    $syncLauncher = Join-Path $InstallRoot 'Sync-Visitas-Task-Hub-Hidden.vbs'
+    $wscript = Join-Path $env:SystemRoot 'System32\wscript.exe'
+    if (-not (Test-Path -LiteralPath $syncLauncher)) { throw "非表示同期ランチャーが見つかりません: $syncLauncher" }
+    if (-not (Test-Path -LiteralPath $wscript)) { throw "Windows Script Hostが見つかりません: $wscript" }
+    $action = New-ScheduledTaskAction -Execute $wscript -Argument "//B //Nologo `"$syncLauncher`""
     $settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -ExecutionTimeLimit (New-TimeSpan -Minutes 2)
     $principal = New-ScheduledTaskPrincipal -UserId ([System.Security.Principal.WindowsIdentity]::GetCurrent().Name) -LogonType Interactive -RunLevel Limited
 

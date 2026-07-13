@@ -16,7 +16,7 @@ macOS版を変更せず、Windows用コードを独立配置した互換実装�
 powershell -ExecutionPolicy Bypass -File .\windows\Install-OneFPSRecorder.Windows.ps1
 ```
 
-標準配置先は `%LOCALAPPDATA%\OneFPSRecorder\app`、録画先は `%USERPROFILE%\Videos\1FPS録画` です。ログオン時の常駐起動も登録します。
+標準配置先は `%LOCALAPPDATA%\OneFPSRecorder\app`、録画先は `%USERPROFILE%\Videos\1FPS録画` です。ログオン時に自動起動し、タスクバー右端の通知領域へ常駐します。手動起動はスタートメニューで `OneFPSRecorder Windows` を検索してください。通知領域アイコンのダブルクリックで設定、右クリックで録画操作や終了ができます。
 
 ## 安全な日報処理
 
