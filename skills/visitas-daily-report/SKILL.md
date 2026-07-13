@@ -22,10 +22,10 @@ if [ ! -x "$APP" ]; then APP="/Applications/OneFPSRecorder.app/Contents/MacOS/On
 
 1. Visitas Slack と `#日報` の本人スレッド
 2. Gmail の Notta 議事録検索
-3. `~/visitas-tasks/tasks.json` の Task Hub
+3. `~/visitas-tasks/taskctl.py` が同期する Task Hub
 4. 設定された GitHub Issues リポジトリ
 
-Visitasタスクに触れる場合は、毎回 `tasks.json`、同じディレクトリの `AGENT.md`、`KNOWLEDGE.md` を読む。Task Hubが唯一の正典であり、別のMarkdown台帳を作成・更新しない。
+Visitasタスクに触れる場合は、毎回 `AGENT.md` と `KNOWLEDGE.md` を読み、実行中のエージェント名で `taskctl.py --actor <codex|claude> sync` と `brief` を実行する。Box内の追記イベントが正典であり、`tasks.json` や別のMarkdown台帳を直接編集しない。
 
 設定画面の「日報・参照元...」に登録された追加参照も読む。参照できないソースは推測で埋めず、`not checked` と明示する。SlackやGmailの生本文は、日報に必要な最小限だけ要約し、リポジトリや恒久ファイルへ保存しない。
 
@@ -84,13 +84,14 @@ Slack本文は、ライブの `#日報` 案内に合わせて次の形にする�
 
 ## Visitas Task Hub updates
 
-日報の根拠から新しいタスクや進捗差分が見つかった場合は、書き込み前に最新の `tasks.json` を読み直し、`AGENT.md` のスキーマと競合回避ルールに従う。
+日報の根拠から新しいタスクや進捗差分が見つかった場合は、書き込み前に `taskctl.py --actor <codex|claude> sync` を実行し、`AGENT.md` の競合回避ルールに従う。
 
-- 重複を `ref` で確認する。
+- 重複を `source_ref` で確認する。
 - 根拠が弱い新規項目は `inbox` にする。
 - 完了根拠なしに `done` にしない。
 - タスク削除は必ず別途確認する。
-- 変更したタスクと `meta.updated` の日付を更新し、有効なJSONであることを検証する。
+- 追加・状態変更・メモはすべて `taskctl.py` 経由で行う。
+- 最後に `handoff` へ日報処理の結果と次の1手を記録し、`sync` する。
 - 個人Task HubをVisitas本体リポジトリへコミットしない。
 
 最後に `checked / not checked` の参照元、作成した日付、各宛先の実行結果、Task Hubの変更有無を簡潔に報告する。
