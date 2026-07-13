@@ -718,7 +718,8 @@ final class VisitasTaskWindowController: NSWindowController {
         else { return "正典タスク台帳を読めません: \(path)" }
 
         let priorityOrder = ["P0": 0, "P1": 1, "P2": 2, "P3": 3]
-        let active = hub.tasks.filter { $0.status != "done" }.sorted {
+        let inactiveStatuses = Set(["done", "archived"])
+        let active = hub.tasks.filter { !inactiveStatuses.contains($0.status) }.sorted {
             let left = priorityOrder[$0.priority] ?? 9
             let right = priorityOrder[$1.priority] ?? 9
             return left == right ? $0.id < $1.id : left < right
