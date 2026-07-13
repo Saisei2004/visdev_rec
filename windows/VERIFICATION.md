@@ -27,7 +27,16 @@ Verified on 2026-07-13 against base commit `a9d38f067e34a4264835edfeaa4f28935569
 - The WPF batch UI asks the three required questions independently before external execution.
 - Slack publishing requires `#日報` and a configured personal `thread_ts`; channel-root posting is rejected.
 
-## Pending external confirmation
+## Cross-device acceptance
 
-- A Mac must sync Box and confirm that the Windows-created schema-2 event files materialize there. Until then, cross-device Box acceptance is incomplete.
-- GitHub CLI is installed but not authenticated on this Windows PC. Push and Draft PR creation remain pending authentication.
+- The Mac detected the Windows device `SAISEI_2` and read all six Windows-created schema-2 events successfully.
+- All 24 shared event IDs were unique, and the Mac confirmed the Windows handoff for `SYS-WINDOWS-COMPAT`.
+- Mac-to-Windows and Windows-to-Mac Task Hub synchronization passed. `SYS-WINDOWS-COMPAT` is complete.
+- Physical monitor unplug/replug and explicitly authorized live Drive/Slack posting remain tracked separately as `SYS-WINDOWS-COMPAT-E2E`.
+
+## GitHub publication
+
+- Branch: `feature/windows-compatible-system`
+- Implementation commit accepted by the Mac: `c9c8270f3a681b6b7a93811171e3fe69b3080411`
+- Draft PR: [#2](https://github.com/Saisei2004/visdev_rec/pull/2), targeting `feature/drive-report-submit`
+- GitHub CLI remains unauthenticated locally; the branch was pushed through Git Credential Manager and the Draft PR was created through the GitHub integration.
