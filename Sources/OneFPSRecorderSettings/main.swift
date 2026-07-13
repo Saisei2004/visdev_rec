@@ -1,4 +1,5 @@
 import AppKit
+import CoreGraphics
 
 enum SharedSettings {
     private static let defaults = UserDefaults.standard
@@ -20,6 +21,7 @@ enum SharedSettings {
     private static let pauseOnMouseIdleKey = "pauseOnMouseIdle"
     private static let autoResumeOnMouseMoveKey = "autoResumeOnMouseMove"
     private static let mouseIdleMinutesKey = "mouseIdleMinutes"
+    private static let captureDisplayIDKey = "captureDisplayID"
     private static let reporterNameKey = "reporterName"
     private static let driveFolderURLKey = "driveFolderURL"
     private static let videoDriveFolderURLKey = "videoDriveFolderURL"
@@ -179,6 +181,23 @@ enum SharedSettings {
             return value > 0 ? value : 5
         }
         set { defaults.set(min(max(1, newValue), 180), forKey: mouseIdleMinutesKey) }
+    }
+
+    static var captureDisplayID: CGDirectDisplayID? {
+        get {
+            guard let number = defaults.object(forKey: captureDisplayIDKey) as? NSNumber,
+                  number.uint32Value != 0
+            else { return nil }
+            return number.uint32Value
+        }
+        set {
+            if let newValue {
+                defaults.set(NSNumber(value: newValue), forKey: captureDisplayIDKey)
+            } else {
+                defaults.removeObject(forKey: captureDisplayIDKey)
+            }
+            defaults.synchronize()
+        }
     }
 
     static var reporterName: String {
@@ -412,6 +431,7 @@ final class SettingsDelegate: NSObject, NSApplicationDelegate {
     private let pauseOnMouseIdleCheckbox = NSButton(checkboxWithTitle: "マウス無操作で一時停止する", target: nil, action: nil)
     private let autoResumeOnMouseMoveCheckbox = NSButton(checkboxWithTitle: "マウスが動いたら自動再開する", target: nil, action: nil)
     private let mouseIdleMinutesField = NSTextField(string: "\(SharedSettings.mouseIdleMinutes)")
+    private let captureTargetPopup = NSPopUpButton(frame: .zero, pullsDown: false)
     private let reportDefaultsButton = NSButton(title: "業務報告初期値...", target: nil, action: nil)
     private let advancedButton = NSButton(title: "詳細設定...", target: nil, action: nil)
     private let toggleRecordingButton = NSButton(title: "録画開始/停止", target: nil, action: nil)
@@ -808,6 +828,7 @@ final class SettingsDelegate: NSObject, NSApplicationDelegate {
         pauseOnMouseIdleCheckbox.state = SharedSettings.pauseOnMouseIdle ? .on : .off
         autoResumeOnMouseMoveCheckbox.state = SharedSettings.autoResumeOnMouseMove ? .on : .off
         mouseIdleMinutesField.stringValue = "\(SharedSettings.mouseIdleMinutes)"
+        reloadCaptureTargetPopup()
         showReportMenuCheckbox.state = SharedSettings.showReportMenu ? .on : .off
         advancedWindow?.center()
         advancedWindow?.makeKeyAndOrderFront(nil)
@@ -816,7 +837,7 @@ final class SettingsDelegate: NSObject, NSApplicationDelegate {
 
     private func buildAdvancedWindow() {
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 540, height: 564),
+            contentRect: NSRect(x: 0, y: 0, width: 540, height: 624),
             styleMask: [.titled, .closable],
             backing: .buffered,
             defer: false
@@ -825,8 +846,20 @@ final class SettingsDelegate: NSObject, NSApplicationDelegate {
         window.isReleasedWhenClosed = false
         advancedWindow = window
 
-        let content = NSView(frame: NSRect(x: 0, y: 0, width: 540, height: 538))
+        let content = NSView(frame: NSRect(x: 0, y: 0, width: 540, height: 598))
         window.contentView = content
+
+        let captureTitle = NSTextField(labelWithString: "録画する画面")
+        captureTitle.font = NSFont.systemFont(ofSize: 13, weight: .semibold)
+        captureTitle.frame = NSRect(x: 30, y: 538, width: 100, height: 20)
+
+        captureTargetPopup.frame = NSRect(x: 150, y: 532, width: 260, height: 28)
+        reloadCaptureTargetPopup()
+
+        let captureHint = NSTextField(labelWithString: "固定を選ぶと、マウスを別画面へ移動しても録画先は変わりません。")
+        captureHint.font = NSFont.systemFont(ofSize: 11)
+        captureHint.textColor = .secondaryLabelColor
+        captureHint.frame = NSRect(x: 150, y: 510, width: 360, height: 18)
 
         let displayTitle = NSTextField(labelWithString: "表示")
         displayTitle.font = NSFont.systemFont(ofSize: 13, weight: .semibold)
@@ -927,6 +960,9 @@ final class SettingsDelegate: NSObject, NSApplicationDelegate {
         saveButton.keyEquivalent = "\r"
         saveButton.frame = NSRect(x: 434, y: 22, width: 76, height: 30)
 
+        content.addSubview(captureTitle)
+        content.addSubview(captureTargetPopup)
+        content.addSubview(captureHint)
         content.addSubview(displayTitle)
         content.addSubview(overlayCheckbox)
         content.addSubview(pauseOverlayCheckbox)
@@ -970,10 +1006,33 @@ final class SettingsDelegate: NSObject, NSApplicationDelegate {
         SharedSettings.pauseOnMouseIdle = pauseOnMouseIdleCheckbox.state == .on
         SharedSettings.autoResumeOnMouseMove = autoResumeOnMouseMoveCheckbox.state == .on
         SharedSettings.mouseIdleMinutes = Int(mouseIdleMinutesField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)) ?? 5
+        let selectedDisplayID = (captureTargetPopup.selectedItem?.representedObject as? NSNumber)?.uint32Value ?? 0
+        SharedSettings.captureDisplayID = selectedDisplayID == 0 ? nil : selectedDisplayID
         SharedSettings.showReportMenu = showReportMenuCheckbox.state == .on
         syncAllDerivedLogs()
         Self.sendCommand("refreshSettings")
         advancedWindow?.orderOut(nil)
+    }
+
+    private func reloadCaptureTargetPopup() {
+        captureTargetPopup.removeAllItems()
+        captureTargetPopup.addItem(withTitle: "マウスのある画面を追従")
+        captureTargetPopup.lastItem?.representedObject = NSNumber(value: UInt32(0))
+        for screen in NSScreen.screens {
+            guard let number = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber else {
+                continue
+            }
+            captureTargetPopup.addItem(withTitle: "固定: \(screen.localizedName)")
+            captureTargetPopup.lastItem?.representedObject = NSNumber(value: number.uint32Value)
+        }
+        let selectedID = SharedSettings.captureDisplayID ?? 0
+        if let matching = captureTargetPopup.itemArray.first(where: {
+            ($0.representedObject as? NSNumber)?.uint32Value == selectedID
+        }) {
+            captureTargetPopup.select(matching)
+        } else {
+            captureTargetPopup.selectItem(at: 0)
+        }
     }
 
     @objc private func closeAdvancedPressed() {

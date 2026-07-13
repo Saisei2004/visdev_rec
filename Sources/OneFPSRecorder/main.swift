@@ -22,6 +22,7 @@ enum RecorderSettings {
     private static let pauseOnMouseIdleKey = "pauseOnMouseIdle"
     private static let autoResumeOnMouseMoveKey = "autoResumeOnMouseMove"
     private static let mouseIdleMinutesKey = "mouseIdleMinutes"
+    private static let captureDisplayIDKey = "captureDisplayID"
     private static let startMessageIndexKey = "startMessageIndex"
     private static let stopMessageIndexKey = "stopMessageIndex"
     private static let reporterNameKey = "reporterName"
@@ -211,6 +212,25 @@ enum RecorderSettings {
             return value > 0 ? value : 5
         }
         set { defaults.set(min(max(1, newValue), 180), forKey: mouseIdleMinutesKey) }
+    }
+
+    /// nil keeps the legacy behavior: capture whichever display contains the mouse.
+    static var captureDisplayID: CGDirectDisplayID? {
+        get {
+            defaults.synchronize()
+            guard let number = defaults.object(forKey: captureDisplayIDKey) as? NSNumber,
+                  number.uint32Value != 0
+            else { return nil }
+            return number.uint32Value
+        }
+        set {
+            if let newValue {
+                defaults.set(NSNumber(value: newValue), forKey: captureDisplayIDKey)
+            } else {
+                defaults.removeObject(forKey: captureDisplayIDKey)
+            }
+            defaults.synchronize()
+        }
     }
 
     static func nextStartMessageIndex(modulo: Int) -> Int {
@@ -426,6 +446,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             },
             stopPausedAction: { [weak self] in
                 self?.stopAutomaticPauseFromOverlay()
+            },
+            settingsAction: { [weak self] in
+                self?.openSettings()
             }
         )
         setupCommandNotifications()
@@ -520,6 +543,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         folderItem.target = self
         menu.addItem(folderItem)
 
+        let captureTargetItem = NSMenuItem(title: "録画する画面", action: nil, keyEquivalent: "")
+        captureTargetItem.submenu = makeCaptureTargetMenu()
+        menu.addItem(captureTargetItem)
+
         let reportItem = NSMenuItem(title: "業務報告を提出...", action: #selector(openReportSubmission), keyEquivalent: "")
         reportItem.target = self
         reportItem.isHidden = !RecorderSettings.showReportMenu
@@ -532,6 +559,39 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         item.menu = menu
         statusItem = item
+    }
+
+    private func makeCaptureTargetMenu() -> NSMenu {
+        let menu = NSMenu()
+        let followItem = NSMenuItem(title: "マウスのある画面を追従", action: #selector(selectCaptureTarget(_:)), keyEquivalent: "")
+        followItem.target = self
+        followItem.representedObject = NSNumber(value: UInt32(0))
+        followItem.state = RecorderSettings.captureDisplayID == nil ? .on : .off
+        menu.addItem(followItem)
+        menu.addItem(.separator())
+
+        for target in CaptureDisplayTarget.availableDisplays() {
+            let item = NSMenuItem(title: "固定: \(target.name)", action: #selector(selectCaptureTarget(_:)), keyEquivalent: "")
+            item.target = self
+            item.representedObject = NSNumber(value: target.id)
+            item.state = RecorderSettings.captureDisplayID == target.id ? .on : .off
+            menu.addItem(item)
+        }
+        return menu
+    }
+
+    @objc private func selectCaptureTarget(_ sender: NSMenuItem) {
+        let selectedID = (sender.representedObject as? NSNumber)?.uint32Value ?? 0
+        RecorderSettings.captureDisplayID = selectedID == 0 ? nil : selectedID
+        refreshCaptureTargetMenus()
+    }
+
+    private func refreshCaptureTargetMenus() {
+        if let menu = statusItem?.menu,
+           let item = menu.items.first(where: { $0.title == "録画する画面" }) {
+            item.submenu = makeCaptureTargetMenu()
+        }
+        overlay.refreshCaptureTargets()
     }
 
     private func applyStatus(_ state: RecorderState) {
@@ -827,6 +887,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 overlay.revealOnMainDisplay()
             }
         case "refreshSettings":
+            refreshCaptureTargetMenus()
             if recorder.isRecording, let startedAt = recorder.currentStartedAt {
                 applyStatus(.recording(startedAt))
             } else {
@@ -1473,17 +1534,20 @@ final class RecordingOverlay {
     private static let originXKey = "recordingOverlayOriginX"
     private static let originYKey = "recordingOverlayOriginY"
     private let panel: NSPanel
-    private let root = DraggableVisualEffectView(frame: NSRect(x: 0, y: 0, width: 336, height: 76))
+    private let root = DraggableVisualEffectView(frame: NSRect(x: 0, y: 0, width: 520, height: 92))
     private let titleLabel = DraggableLabel(labelWithString: "録画 00:00")
     private let scoreLabel = DraggableLabel(labelWithString: "")
     private let messageLabel = DraggableLabel(labelWithString: "")
     private let statusDot = DraggableDotView(frame: NSRect(x: 0, y: 0, width: 9, height: 9))
     private let stopButton = NSButton(title: "停止", target: nil, action: nil)
     private let secondaryStopButton = NSButton(title: "停止", target: nil, action: nil)
+    private let captureTargetPopup = NSPopUpButton(frame: .zero, pullsDown: false)
+    private let settingsButton = NSButton(title: "設定", target: nil, action: nil)
     private let startAction: () -> Void
     private let stopAction: () -> Void
     private let resumeAction: () -> Void
     private let stopPausedAction: () -> Void
+    private let settingsAction: () -> Void
     private var buttonMode: ButtonMode = .stop
     private var glowTimer: Timer?
     private var glowHue: CGFloat = 0
@@ -1498,15 +1562,17 @@ final class RecordingOverlay {
         startAction: @escaping () -> Void,
         stopAction: @escaping () -> Void,
         resumeAction: @escaping () -> Void,
-        stopPausedAction: @escaping () -> Void
+        stopPausedAction: @escaping () -> Void,
+        settingsAction: @escaping () -> Void
     ) {
         self.startAction = startAction
         self.stopAction = stopAction
         self.resumeAction = resumeAction
         self.stopPausedAction = stopPausedAction
+        self.settingsAction = settingsAction
 
         panel = NSPanel(
-            contentRect: NSRect(x: 0, y: 0, width: 336, height: 76),
+            contentRect: NSRect(x: 0, y: 0, width: 520, height: 92),
             styleMask: [.borderless, .nonactivatingPanel],
             backing: .buffered,
             defer: false
@@ -1567,13 +1633,25 @@ final class RecordingOverlay {
         secondaryStopButton.setButtonType(.momentaryPushIn)
         secondaryStopButton.isHidden = true
 
+        captureTargetPopup.target = self
+        captureTargetPopup.action = #selector(captureTargetChanged)
+        captureTargetPopup.font = NSFont.systemFont(ofSize: 11, weight: .medium)
+
+        settingsButton.target = self
+        settingsButton.action = #selector(settingsPressed)
+        settingsButton.bezelStyle = .rounded
+        settingsButton.font = NSFont.systemFont(ofSize: 11, weight: .medium)
+
         root.addSubview(statusDot)
         root.addSubview(titleLabel)
         root.addSubview(scoreLabel)
         root.addSubview(messageLabel)
         root.addSubview(stopButton)
         root.addSubview(secondaryStopButton)
+        root.addSubview(captureTargetPopup)
+        root.addSubview(settingsButton)
         panel.contentView = root
+        refreshCaptureTargets()
         layoutSubviews()
     }
 
@@ -1675,12 +1753,42 @@ final class RecordingOverlay {
     }
 
     private func layoutSubviews() {
-        statusDot.frame = NSRect(x: 16, y: 49, width: 9, height: 9)
-        titleLabel.frame = NSRect(x: 34, y: 44, width: 118, height: 18)
-        scoreLabel.frame = NSRect(x: 154, y: 44, width: 104, height: 18)
-        messageLabel.frame = NSRect(x: 16, y: 16, width: 248, height: 18)
-        stopButton.frame = NSRect(x: 274, y: 41, width: 48, height: 26)
-        secondaryStopButton.frame = NSRect(x: 216, y: 41, width: 48, height: 26)
+        statusDot.frame = NSRect(x: 16, y: 65, width: 9, height: 9)
+        titleLabel.frame = NSRect(x: 34, y: 60, width: 118, height: 18)
+        scoreLabel.frame = NSRect(x: 154, y: 60, width: 104, height: 18)
+        messageLabel.frame = NSRect(x: 16, y: 20, width: 224, height: 18)
+        captureTargetPopup.frame = NSRect(x: 246, y: 14, width: 172, height: 28)
+        settingsButton.frame = NSRect(x: 424, y: 14, width: 80, height: 28)
+        stopButton.frame = NSRect(x: 456, y: 57, width: 48, height: 26)
+        secondaryStopButton.frame = NSRect(x: 398, y: 57, width: 48, height: 26)
+    }
+
+    func refreshCaptureTargets() {
+        captureTargetPopup.removeAllItems()
+        captureTargetPopup.addItem(withTitle: "追従: マウスの画面")
+        captureTargetPopup.lastItem?.representedObject = NSNumber(value: UInt32(0))
+        for target in CaptureDisplayTarget.availableDisplays() {
+            captureTargetPopup.addItem(withTitle: "固定: \(target.name)")
+            captureTargetPopup.lastItem?.representedObject = NSNumber(value: target.id)
+        }
+        let selectedID = RecorderSettings.captureDisplayID ?? 0
+        if let matching = captureTargetPopup.itemArray.first(where: {
+            ($0.representedObject as? NSNumber)?.uint32Value == selectedID
+        }) {
+            captureTargetPopup.select(matching)
+        } else {
+            captureTargetPopup.selectItem(at: 0)
+        }
+    }
+
+    @objc private func captureTargetChanged() {
+        let selectedID = (captureTargetPopup.selectedItem?.representedObject as? NSNumber)?.uint32Value ?? 0
+        RecorderSettings.captureDisplayID = selectedID == 0 ? nil : selectedID
+    }
+
+    @objc private func settingsPressed() {
+        saveCurrentOrigin()
+        settingsAction()
     }
 
     private func setGlowEnabled(_ enabled: Bool) {
@@ -1778,6 +1886,20 @@ final class DraggableLabel: NSTextField {
 
 final class DraggableDotView: NSView {
     override var mouseDownCanMoveWindow: Bool { true }
+}
+
+struct CaptureDisplayTarget {
+    let id: CGDirectDisplayID
+    let name: String
+
+    static func availableDisplays() -> [CaptureDisplayTarget] {
+        NSScreen.screens.compactMap { screen in
+            guard let number = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber else {
+                return nil
+            }
+            return CaptureDisplayTarget(id: number.uint32Value, name: screen.localizedName)
+        }
+    }
 }
 
 final class OneFPSRecorder: NSObject {
@@ -2110,7 +2232,7 @@ final class OneFPSRecorder: NSObject {
         let capturedAt = Date()
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")
-        if let captureRectangle = Self.displayBoundsContainingMouse() {
+        if let captureRectangle = Self.captureDisplayBounds() {
             process.arguments = [
                 "-x",
                 "-t", "jpg",
@@ -3897,6 +4019,16 @@ final class OneFPSRecorder: NSObject {
             return CGDisplayBounds(CGMainDisplayID())
         }
         return CGDisplayBounds(display)
+    }
+
+    private static func captureDisplayBounds() -> CGRect? {
+        guard let fixedDisplayID = RecorderSettings.captureDisplayID else {
+            return displayBoundsContainingMouse()
+        }
+        if CGDisplayIsActive(fixedDisplayID) != 0 {
+            return CGDisplayBounds(fixedDisplayID)
+        }
+        return CGDisplayBounds(CGMainDisplayID())
     }
 
     private static func rectangleArgument(_ rectangle: CGRect) -> String {
