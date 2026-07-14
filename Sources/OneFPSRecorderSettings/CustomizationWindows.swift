@@ -143,7 +143,7 @@ final class PopupCustomizationWindowController: NSWindowController {
 
     @objc private func savePressed() {
         SharedSettings.popupPreset = ["standard", "minimal", "custom"][max(0, presetPopup.indexOfSelectedItem)]
-        SharedSettings.popupWidth = CGFloat(Int(widthField.stringValue) ?? 520)
+        SharedSettings.popupWidth = CGFloat(Int(widthField.stringValue) ?? 360)
         SharedSettings.popupShowTitle = showTitle.state == .on
         SharedSettings.popupShowMessage = showMessage.state == .on
         SharedSettings.popupShowCaptureTarget = showCapture.state == .on
@@ -164,9 +164,9 @@ final class PopupCustomizationWindowController: NSWindowController {
 
     @objc private func resetPressed() {
         presetPopup.selectItem(at: 0)
-        widthField.stringValue = "520"
-        [showTitle, showMessage, showCapture, showSettings, showControl].forEach { $0.state = .on }
-        [showReport, showTasks].forEach { $0.state = .off }
+        widthField.stringValue = "360"
+        [showTitle, showMessage, showSettings, showControl].forEach { $0.state = .on }
+        [showCapture, showReport, showTasks].forEach { $0.state = .off }
         idleText.stringValue = "1FPS 待機中"
         recordingText.stringValue = "録画"
         startText.stringValue = "開始"

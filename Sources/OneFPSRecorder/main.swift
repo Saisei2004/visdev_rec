@@ -259,21 +259,21 @@ enum RecorderSettings {
     }
 
     static var popupPreset: String {
-        get { savedText(forKey: popupPresetKey, fallback: "standard") }
-        set { defaults.set(["standard", "minimal", "custom"].contains(newValue) ? newValue : "standard", forKey: popupPresetKey) }
+        get { savedText(forKey: popupPresetKey, fallback: "minimal") }
+        set { defaults.set(["standard", "minimal", "custom"].contains(newValue) ? newValue : "minimal", forKey: popupPresetKey) }
     }
 
     static var popupWidth: CGFloat {
         get {
             let value = defaults.double(forKey: popupWidthKey)
-            return value > 0 ? CGFloat(min(max(value, 240), 900)) : 520
+            return value > 0 ? CGFloat(min(max(value, 240), 900)) : 360
         }
         set { defaults.set(Double(min(max(newValue, 240), 900)), forKey: popupWidthKey) }
     }
 
     static var popupShowTitle: Bool { get { boolSetting(popupShowTitleKey, fallback: true) } set { defaults.set(newValue, forKey: popupShowTitleKey) } }
     static var popupShowMessage: Bool { get { boolSetting(popupShowMessageKey, fallback: true) } set { defaults.set(newValue, forKey: popupShowMessageKey) } }
-    static var popupShowCaptureTarget: Bool { get { boolSetting(popupShowCaptureTargetKey, fallback: true) } set { defaults.set(newValue, forKey: popupShowCaptureTargetKey) } }
+    static var popupShowCaptureTarget: Bool { get { boolSetting(popupShowCaptureTargetKey, fallback: false) } set { defaults.set(newValue, forKey: popupShowCaptureTargetKey) } }
     static var popupShowSettingsButton: Bool { get { boolSetting(popupShowSettingsButtonKey, fallback: true) } set { defaults.set(newValue, forKey: popupShowSettingsButtonKey) } }
     static var popupShowControlButton: Bool { get { boolSetting(popupShowControlButtonKey, fallback: true) } set { defaults.set(newValue, forKey: popupShowControlButtonKey) } }
     static var popupShowReportButton: Bool { get { boolSetting(popupShowReportButtonKey, fallback: false) } set { defaults.set(newValue, forKey: popupShowReportButtonKey) } }
@@ -1690,7 +1690,7 @@ final class RecordingOverlay {
     private static let originXKey = "recordingOverlayOriginX"
     private static let originYKey = "recordingOverlayOriginY"
     private let panel: NSPanel
-    private let root = DraggableVisualEffectView(frame: NSRect(x: 0, y: 0, width: 520, height: 92))
+    private let root = DraggableVisualEffectView(frame: NSRect(x: 0, y: 0, width: 360, height: 92))
     private let titleLabel = DraggableLabel(labelWithString: "録画 00:00")
     private let scoreLabel = DraggableLabel(labelWithString: "")
     private let messageLabel = DraggableLabel(labelWithString: "")
@@ -1736,7 +1736,7 @@ final class RecordingOverlay {
         self.tasksAction = tasksAction
 
         panel = NSPanel(
-            contentRect: NSRect(x: 0, y: 0, width: 520, height: 92),
+            contentRect: NSRect(x: 0, y: 0, width: 360, height: 92),
             styleMask: [.borderless, .nonactivatingPanel],
             backing: .buffered,
             defer: false
@@ -1938,7 +1938,7 @@ final class RecordingOverlay {
         let isCustom = preset == "custom"
         let showTitle = !minimal && (!isCustom || RecorderSettings.popupShowTitle)
         let showMessage = !minimal && (!isCustom || RecorderSettings.popupShowMessage)
-        let showCapture = !minimal && (!isCustom || RecorderSettings.popupShowCaptureTarget)
+        let showCapture = isCustom && RecorderSettings.popupShowCaptureTarget
         let showSettings = !minimal && (!isCustom || RecorderSettings.popupShowSettingsButton)
         let showControl = !minimal && (!isCustom || RecorderSettings.popupShowControlButton)
         let showReport = !minimal && RecorderSettings.popupShowReportButton
@@ -1962,7 +1962,7 @@ final class RecordingOverlay {
         if showSettings { bottomControlsWidth += settingsWidth }
         if showReport { bottomControlsWidth += reportWidth }
         if showTasks { bottomControlsWidth += tasksWidth }
-        let requestedWidth: CGFloat = minimal ? 44 : (isCustom ? RecorderSettings.popupWidth : 520)
+        let requestedWidth: CGFloat = minimal ? 44 : (isCustom ? RecorderSettings.popupWidth : 360)
         let width = minimal ? requestedWidth : max(requestedWidth, bottomControlsWidth + (showMessage ? 140 : 30))
         let height: CGFloat = minimal ? 34 : 92
         panel.setContentSize(NSSize(width: width, height: height))

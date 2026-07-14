@@ -225,11 +225,11 @@ enum SharedSettings {
         }
     }
 
-    static var popupPreset: String { get { savedText(forKey: popupPresetKey, fallback: "standard") } set { defaults.set(newValue, forKey: popupPresetKey) } }
-    static var popupWidth: CGFloat { get { let value = defaults.double(forKey: popupWidthKey); return value > 0 ? CGFloat(min(max(value, 240), 900)) : 520 } set { defaults.set(Double(min(max(newValue, 240), 900)), forKey: popupWidthKey) } }
+    static var popupPreset: String { get { savedText(forKey: popupPresetKey, fallback: "minimal") } set { defaults.set(newValue, forKey: popupPresetKey) } }
+    static var popupWidth: CGFloat { get { let value = defaults.double(forKey: popupWidthKey); return value > 0 ? CGFloat(min(max(value, 240), 900)) : 360 } set { defaults.set(Double(min(max(newValue, 240), 900)), forKey: popupWidthKey) } }
     static var popupShowTitle: Bool { get { boolSetting(popupShowTitleKey, fallback: true) } set { defaults.set(newValue, forKey: popupShowTitleKey) } }
     static var popupShowMessage: Bool { get { boolSetting(popupShowMessageKey, fallback: true) } set { defaults.set(newValue, forKey: popupShowMessageKey) } }
-    static var popupShowCaptureTarget: Bool { get { boolSetting(popupShowCaptureTargetKey, fallback: true) } set { defaults.set(newValue, forKey: popupShowCaptureTargetKey) } }
+    static var popupShowCaptureTarget: Bool { get { boolSetting(popupShowCaptureTargetKey, fallback: false) } set { defaults.set(newValue, forKey: popupShowCaptureTargetKey) } }
     static var popupShowSettingsButton: Bool { get { boolSetting(popupShowSettingsButtonKey, fallback: true) } set { defaults.set(newValue, forKey: popupShowSettingsButtonKey) } }
     static var popupShowControlButton: Bool { get { boolSetting(popupShowControlButtonKey, fallback: true) } set { defaults.set(newValue, forKey: popupShowControlButtonKey) } }
     static var popupShowReportButton: Bool { get { boolSetting(popupShowReportButtonKey, fallback: false) } set { defaults.set(newValue, forKey: popupShowReportButtonKey) } }
