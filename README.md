@@ -2,6 +2,8 @@
 
 Macの画面を1FPSで軽く記録するメニューバー常駐アプリです。音声なし、低めの解像度、日別MP4への追記、月別ログ保存に寄せています。
 
+Windows互換版はmacOSコードを変更せず `windows/` と `tools/visitas-task-hub-windows/` に分離しています。Windows版のインストール、構成、検証方法は [`windows/README.md`](windows/README.md) を参照してください。
+
 ## 最短インストール
 
 配布PKGがある場合は、`OneFPSRecorder-1.0.pkg` を開いてインストールします。アプリは `/Applications/OneFPSRecorder.app` に入り、ログイン時に自動起動します。

@@ -1,0 +1,265 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Visitas Practical Task Hub</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      --bg:#f4f5f7; --panel:#fff; --text:#18202b; --sub:#627080; --line:#dce1e7;
+      --primary:#2856b6; --primary-soft:#eaf0ff; --danger:#c93737; --warn:#9b6500; --ok:#197044;
+      --shadow:0 2px 8px rgba(20,30,50,.08); --radius:10px;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root { --bg:#11151b; --panel:#1b212a; --text:#edf1f5; --sub:#a3afbc; --line:#343d49;
+        --primary:#78a3ff; --primary-soft:#1f3154; --danger:#ff8080; --warn:#efba53; --ok:#62cf95;
+        --shadow:0 2px 10px rgba(0,0,0,.28); }
+    }
+    * { box-sizing:border-box; }
+    body { margin:0; background:var(--bg); color:var(--text); font:14px/1.5 -apple-system,BlinkMacSystemFont,"Hiragino Sans",sans-serif; }
+    button,input,select,textarea { font:inherit; }
+    button { border:1px solid var(--line); background:var(--panel); color:var(--text); border-radius:8px; padding:7px 11px; cursor:pointer; }
+    button:hover { border-color:var(--primary); }
+    button.primary { background:var(--primary); border-color:var(--primary); color:#fff; font-weight:700; }
+    button.danger { color:var(--danger); }
+    button.small { padding:4px 8px; font-size:12px; }
+    a { color:var(--primary); }
+    header { position:sticky; top:0; z-index:10; background:var(--panel); border-bottom:1px solid var(--line); }
+    .header-inner { max-width:1320px; margin:auto; padding:12px 18px; display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+    h1 { font-size:17px; margin:0; }
+    .sync { color:var(--sub); font-size:12px; }
+    .spacer { flex:1; }
+    main { max-width:1320px; margin:auto; padding:18px; }
+    .summary { display:grid; grid-template-columns:repeat(5,minmax(100px,1fr)); gap:10px; margin-bottom:14px; }
+    .metric { background:var(--panel); border:1px solid var(--line); border-radius:var(--radius); padding:11px 13px; box-shadow:var(--shadow); }
+    .metric .label { color:var(--sub); font-size:11px; }
+    .metric .value { font-size:22px; font-weight:800; }
+    .focus { background:var(--panel); border:2px solid var(--primary); border-radius:var(--radius); padding:16px; margin-bottom:14px; box-shadow:var(--shadow); }
+    .focus-kicker { color:var(--primary); font-size:11px; font-weight:800; letter-spacing:.08em; }
+    .focus h2 { margin:5px 0 7px; font-size:20px; }
+    .focus .next { background:var(--primary-soft); padding:10px 12px; border-radius:8px; margin:9px 0; }
+    .actions { display:flex; gap:7px; flex-wrap:wrap; }
+    .layout { display:grid; grid-template-columns:minmax(0,2fr) minmax(300px,1fr); gap:14px; }
+    .panel { background:var(--panel); border:1px solid var(--line); border-radius:var(--radius); box-shadow:var(--shadow); overflow:hidden; }
+    .panel-head { padding:12px 14px; border-bottom:1px solid var(--line); display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+    .panel-head h2 { margin:0; font-size:15px; }
+    .filters { display:flex; gap:5px; flex-wrap:wrap; }
+    .filters button.on { background:var(--primary-soft); border-color:var(--primary); color:var(--primary); font-weight:700; }
+    .search { margin-left:auto; min-width:180px; border:1px solid var(--line); background:var(--bg); color:var(--text); border-radius:8px; padding:7px 9px; }
+    .task-list { display:flex; flex-direction:column; }
+    .task { padding:13px 14px; border-bottom:1px solid var(--line); }
+    .task:last-child { border-bottom:0; }
+    .task-top { display:flex; align-items:center; gap:7px; flex-wrap:wrap; }
+    .task-title { font-weight:750; font-size:14px; flex:1; min-width:220px; }
+    .task-next { color:var(--sub); margin:5px 0 7px; white-space:pre-wrap; }
+    .task-meta { color:var(--sub); font-size:11px; display:flex; gap:8px; flex-wrap:wrap; }
+    .pill { border-radius:20px; padding:2px 8px; font-size:10px; font-weight:800; border:1px solid var(--line); }
+    .P0 { color:var(--danger); border-color:var(--danger); } .P1 { color:var(--warn); border-color:var(--warn); }
+    .status-in_progress { color:var(--primary); } .status-blocked { color:var(--danger); } .status-done { color:var(--ok); }
+    .task-buttons { display:flex; gap:5px; margin-top:8px; flex-wrap:wrap; }
+    .empty { color:var(--sub); padding:28px; text-align:center; }
+    .side-section { padding:13px 14px; border-bottom:1px solid var(--line); }
+    .side-section:last-child { border-bottom:0; }
+    .side-section h3 { margin:0 0 8px; font-size:13px; }
+    .handoff { padding:8px 0; border-bottom:1px dashed var(--line); }
+    .handoff:last-child { border-bottom:0; }
+    .handoff .who { color:var(--sub); font-size:11px; }
+    .handoff .next { color:var(--sub); font-size:12px; }
+    .source-row,.device-row { display:flex; justify-content:space-between; gap:8px; padding:4px 0; font-size:12px; }
+    .checked { color:var(--ok); } .not_checked,.blocked { color:var(--warn); }
+    dialog { border:1px solid var(--line); border-radius:12px; background:var(--panel); color:var(--text); width:min(620px,94vw); padding:0; box-shadow:0 12px 40px rgba(0,0,0,.35); }
+    dialog::backdrop { background:rgba(0,0,0,.5); }
+    .dialog-head,.dialog-foot { padding:13px 16px; border-bottom:1px solid var(--line); display:flex; align-items:center; gap:8px; }
+    .dialog-foot { border-bottom:0; border-top:1px solid var(--line); justify-content:flex-end; }
+    .dialog-body { padding:15px 16px; display:grid; gap:11px; max-height:70vh; overflow:auto; }
+    .dialog-body label { display:grid; gap:4px; font-size:12px; color:var(--sub); }
+    .dialog-body input,.dialog-body select,.dialog-body textarea { width:100%; border:1px solid var(--line); background:var(--bg); color:var(--text); border-radius:8px; padding:8px 9px; }
+    .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+    .toast { position:fixed; right:18px; bottom:18px; background:var(--text); color:var(--panel); padding:10px 14px; border-radius:8px; opacity:0; pointer-events:none; transition:.2s; z-index:30; }
+    .toast.show { opacity:1; }
+    @media (max-width:850px) { .layout { grid-template-columns:1fr; } .summary { grid-template-columns:repeat(2,1fr); } .search { width:100%; margin-left:0; } }
+  </style>
+</head>
+<body>
+<header>
+  <div class="header-inner">
+    <h1>Visitas Task Hub</h1>
+    <span class="sync" id="syncText">同期中...</span>
+    <span class="spacer"></span>
+    <button id="handoffButton">引き継ぎを書く</button>
+    <button id="githubButton">GitHub担当Issueを更新</button>
+    <button id="syncButton">同期</button>
+    <button class="primary" id="addButton">＋ タスク追加</button>
+  </div>
+</header>
+<main>
+  <section class="summary" id="summary"></section>
+  <section class="focus" id="focus"></section>
+  <div class="layout">
+    <section class="panel">
+      <div class="panel-head">
+        <h2>タスク</h2>
+        <div class="filters" id="filters"></div>
+        <input class="search" id="search" placeholder="タイトル・Issue・次の1手を検索">
+      </div>
+      <div class="task-list" id="taskList"></div>
+    </section>
+    <aside class="panel">
+      <section class="side-section">
+        <h3>Codex / Claude 引き継ぎ</h3>
+        <div id="handoffs"></div>
+      </section>
+      <section class="side-section">
+        <h3>情報源の確認状況</h3>
+        <div id="sources"></div>
+      </section>
+      <section class="side-section">
+        <h3>同期端末</h3>
+        <div id="devices"></div>
+      </section>
+    </aside>
+  </div>
+</main>
+
+<dialog id="taskDialog">
+  <form method="dialog" id="taskForm">
+    <div class="dialog-head"><strong id="dialogTitle">タスク追加</strong></div>
+    <div class="dialog-body">
+      <input type="hidden" id="taskId">
+      <label>タイトル<input id="title" required></label>
+      <div class="grid2">
+        <label>状態<select id="status"></select></label>
+        <label>優先度<select id="priority"><option>P0</option><option>P1</option><option selected>P2</option><option>P3</option></select></label>
+      </div>
+      <label>次に実行する1手<textarea id="nextAction" rows="3"></textarea></label>
+      <label>ブロッカー<textarea id="blocker" rows="2"></textarea></label>
+      <div class="grid2">
+        <label>期限<input id="due" type="date"></label>
+        <label>領域<input id="area" placeholder="voice / documents / general"></label>
+      </div>
+      <label>URL<input id="url" type="url"></label>
+      <label>タグ（カンマ区切り）<input id="tags"></label>
+    </div>
+    <div class="dialog-foot"><button value="cancel">キャンセル</button><button class="primary" value="default" id="saveTask">保存</button></div>
+  </form>
+</dialog>
+
+<dialog id="handoffDialog">
+  <form method="dialog" id="handoffForm">
+    <div class="dialog-head"><strong>Codex / Claudeへの引き継ぎ</strong></div>
+    <div class="dialog-body">
+      <label>対象タスクID<input id="handoffTask" placeholder="任意"></label>
+      <label>ここまでに行ったこと<textarea id="handoffSummary" rows="4" required></textarea></label>
+      <label>次に行うこと<textarea id="handoffNext" rows="3"></textarea></label>
+      <label>確認結果<textarea id="handoffVerification" rows="2"></textarea></label>
+    </div>
+    <div class="dialog-foot"><button value="cancel">キャンセル</button><button class="primary" value="default" id="saveHandoff">共有する</button></div>
+  </form>
+</dialog>
+
+<div class="toast" id="toast"></div>
+<script>
+const STATUS = {
+  inbox:'受信箱', next:'次にやる', in_progress:'作業中', waiting:'待ち', blocked:'ブロック', done:'完了', archived:'アーカイブ'
+};
+let state = {tasks:[],handoffs:[],source_status:{},devices:{},meta:{}};
+let filter = 'active';
+const $ = id => document.getElementById(id);
+const esc = value => String(value ?? '').replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
+const fmt = value => value ? new Date(value).toLocaleString('ja-JP',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'}) : '-';
+
+async function api(path, body) {
+  const response = await fetch(path, body ? {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)} : {});
+  const value = await response.json();
+  if (!response.ok) throw new Error(value.error || '処理に失敗しました');
+  return value;
+}
+function toast(message) { const node=$('toast'); node.textContent=message; node.classList.add('show'); setTimeout(()=>node.classList.remove('show'),2200); }
+async function load() { state = await api('/api/state'); render(); }
+async function action(body, message='更新しました') { const result=await api('/api/action',{actor:'ui',...body}); state=result.state; render(); toast(message); }
+
+function activeTasks() { return state.tasks.filter(t => !['done','archived'].includes(t.status)); }
+function focusTask() {
+  const score=t => [(t.status==='in_progress'?0:t.status==='next'?1:2),({P0:0,P1:1,P2:2,P3:3}[t.priority]??9),t.due||'9999'];
+  return activeTasks().sort((a,b)=>JSON.stringify(score(a)).localeCompare(JSON.stringify(score(b))))[0];
+}
+function renderSummary() {
+  const all=activeTasks();
+  const values=[['未完了',all.length],['次にやる',all.filter(t=>t.status==='next').length],['作業中',all.filter(t=>t.status==='in_progress').length],['受信箱',all.filter(t=>t.status==='inbox').length],['ブロック',all.filter(t=>t.status==='blocked').length]];
+  $('summary').innerHTML=values.map(([label,value])=>`<div class="metric"><div class="label">${label}</div><div class="value">${value}</div></div>`).join('');
+}
+function taskButtons(t) {
+  const start=t.status==='in_progress'?'':`<button class="small" data-status="in_progress" data-id="${esc(t.id)}">着手</button>`;
+  const next=t.status==='next'?'':`<button class="small" data-status="next" data-id="${esc(t.id)}">次にする</button>`;
+  return `${start}${next}<button class="small" data-status="done" data-id="${esc(t.id)}">完了</button><button class="small danger" data-block="1" data-id="${esc(t.id)}">ブロック</button><button class="small" data-edit="${esc(t.id)}">編集</button>`;
+}
+function renderFocus() {
+  const t=focusTask();
+  if(!t){ $('focus').innerHTML='<div class="focus-kicker">NOW</div><h2>今やるタスクはありません</h2><div>GitHub担当Issueを更新するか、タスクを追加してください。</div>'; return; }
+  $('focus').innerHTML=`<div class="focus-kicker">今やる1件</div><h2>${esc(t.title)}</h2>
+    <div><span class="pill ${esc(t.priority)}">${esc(t.priority)}</span> <span class="pill status-${esc(t.status)}">${esc(STATUS[t.status])}</span> <code>${esc(t.id)}</code></div>
+    <div class="next"><strong>次の1手:</strong> ${esc(t.next_action||'未設定')}</div>
+    ${t.blocker?`<div style="color:var(--danger);margin-bottom:8px"><strong>ブロッカー:</strong> ${esc(t.blocker)}</div>`:''}
+    <div class="actions">${taskButtons(t)}${t.url?`<a href="${esc(t.url)}" target="_blank"><button>Issueを開く</button></a>`:''}</div>`;
+}
+function visibleTasks() {
+  let tasks=state.tasks.filter(t=>t.status!=='archived');
+  if(filter==='active') tasks=tasks.filter(t=>t.status!=='done'); else tasks=tasks.filter(t=>t.status===filter);
+  const q=$('search').value.trim().toLowerCase();
+  if(q) tasks=tasks.filter(t=>[t.id,t.title,t.next_action,t.source_ref,(t.tags||[]).join(' ')].join(' ').toLowerCase().includes(q));
+  return tasks;
+}
+function renderTasks() {
+  const tasks=visibleTasks();
+  $('taskList').innerHTML=tasks.length?tasks.map(t=>`<article class="task">
+    <div class="task-top"><span class="pill ${esc(t.priority)}">${esc(t.priority)}</span><span class="pill status-${esc(t.status)}">${esc(STATUS[t.status])}</span><code>${esc(t.id)}</code><span class="task-title">${esc(t.title)}</span></div>
+    <div class="task-next"><strong>次:</strong> ${esc(t.next_action||'未設定')}</div>
+    ${t.blocker?`<div style="color:var(--danger)"><strong>ブロッカー:</strong> ${esc(t.blocker)}</div>`:''}
+    <div class="task-meta"><span>${esc(t.source_ref||t.source)}</span><span>期限 ${esc(t.due||'なし')}</span><span>更新 ${fmt(t.updated_at)} ${esc(t.updated_by)}@${esc(t.updated_device)}</span></div>
+    <div class="task-buttons">${taskButtons(t)}${t.url?`<a href="${esc(t.url)}" target="_blank"><button class="small">開く</button></a>`:''}</div>
+  </article>`).join(''):'<div class="empty">該当するタスクはありません。</div>';
+}
+function renderSide() {
+  $('handoffs').innerHTML=state.handoffs.length?state.handoffs.slice(0,6).map(h=>`<div class="handoff"><div class="who">${fmt(h.at)} ${esc(h.actor)} @ ${esc(h.device)} ${h.task_id?`/ ${esc(h.task_id)}`:''}</div><div>${esc(h.summary)}</div>${h.next_action?`<div class="next">次: ${esc(h.next_action)}</div>`:''}</div>`).join(''):'<div class="empty">まだ引き継ぎはありません。</div>';
+  const expected=['github_issues','slack','gmail_notta','planning_doc','codex','claude'];
+  $('sources').innerHTML=expected.map(name=>{const s=state.source_status[name]||{status:'not_checked'};return `<div class="source-row"><span>${esc(name)}</span><span class="${esc(s.status)}">${esc(s.status)} ${s.checked_at?fmt(s.checked_at):''}</span></div>`}).join('');
+  const devices=Object.entries(state.devices||{});
+  $('devices').innerHTML=devices.length?devices.map(([id,d])=>`<div class="device-row"><span>${esc(d.name||id)}</span><span>${fmt(d.last_seen)}</span></div>`).join(''):'<div class="empty">この端末のみ</div>';
+}
+function renderFilters() {
+  const items=[['active','未完了'],['next','次にやる'],['in_progress','作業中'],['inbox','受信箱'],['blocked','ブロック'],['done','完了']];
+  $('filters').innerHTML=items.map(([key,label])=>`<button class="small ${filter===key?'on':''}" data-filter="${key}">${label}</button>`).join('');
+}
+function render() {
+  $('syncText').textContent=`Box同期 / ${state.meta.device_name||'-'} / 最終 ${fmt(state.meta.last_event_at)} / ${state.meta.event_count||0} events`;
+  renderSummary(); renderFocus(); renderFilters(); renderTasks(); renderSide();
+}
+function openTask(id='') {
+  const t=id?state.tasks.find(item=>item.id===id):null;
+  $('dialogTitle').textContent=t?'タスク編集':'タスク追加'; $('taskId').value=t?.id||''; $('title').value=t?.title||'';
+  $('status').innerHTML=Object.entries(STATUS).filter(([k])=>k!=='archived').map(([k,v])=>`<option value="${k}" ${t?.status===k?'selected':''}>${v}</option>`).join('');
+  $('priority').value=t?.priority||'P2'; $('nextAction').value=t?.next_action||''; $('blocker').value=t?.blocker||''; $('due').value=t?.due||'';
+  $('area').value=t?.area||'general'; $('url').value=t?.url||''; $('tags').value=(t?.tags||[]).join(', '); $('taskDialog').showModal();
+}
+
+document.addEventListener('click',async e=>{
+  const b=e.target.closest('button'); if(!b)return;
+  try {
+    if(b.dataset.filter){filter=b.dataset.filter;render();}
+    else if(b.dataset.edit!==undefined)openTask(b.dataset.edit);
+    else if(b.dataset.status)await action({action:'status',task_id:b.dataset.id,status:b.dataset.status});
+    else if(b.dataset.block){const reason=prompt('ブロッカーを入力してください');if(reason!==null)await action({action:'status',task_id:b.dataset.id,status:'blocked',blocker:reason});}
+  } catch(error){toast(error.message);}
+});
+$('search').addEventListener('input',renderTasks);
+$('addButton').onclick=()=>openTask();
+$('syncButton').onclick=async()=>{try{state=await api('/api/sync',{});render();toast('同期しました');}catch(e){toast(e.message)}};
+$('githubButton').onclick=async()=>{try{toast('GitHubを確認中...');const r=await api('/api/action',{action:'github-import',actor:'ui'});state=r.state;render();toast(`追加 ${r.result.created} / 更新 ${r.result.updated}`);}catch(e){toast(e.message)}};
+$('handoffButton').onclick=()=>$('handoffDialog').showModal();
+$('taskForm').addEventListener('submit',async e=>{if(e.submitter?.value==='cancel')return;e.preventDefault();const id=$('taskId').value;const body={action:id?'update':'add',task_id:id||undefined,title:$('title').value,status:$('status').value,priority:$('priority').value,next_action:$('nextAction').value,blocker:$('blocker').value,due:$('due').value,area:$('area').value,url:$('url').value,tags:$('tags').value.split(',').map(v=>v.trim()).filter(Boolean)};try{await action(body);$('taskDialog').close();}catch(error){toast(error.message)}});
+$('handoffForm').addEventListener('submit',async e=>{if(e.submitter?.value==='cancel')return;e.preventDefault();try{await action({action:'handoff',task_id:$('handoffTask').value,summary:$('handoffSummary').value,next_action:$('handoffNext').value,verification:$('handoffVerification').value},'引き継ぎを共有しました');$('handoffDialog').close();$('handoffForm').reset();}catch(error){toast(error.message)}});
+load().catch(e=>toast(e.message)); setInterval(()=>load().catch(()=>{}),30000);
+</script>
+</body>
+</html>
