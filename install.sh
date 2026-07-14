@@ -10,6 +10,8 @@ INSTALLED_APP="$INSTALL_DIR/$APP_NAME.app"
 AGENT_DIR="$HOME/Library/LaunchAgents"
 AGENT_PLIST="$AGENT_DIR/local.codex.OneFPSRecorder.plist"
 LOCAL_BIN="$HOME/.local/bin"
+SIGNING_CONFIG_DIR="$HOME/Library/Application Support/OneFPSRecorder"
+SIGNING_CONFIG="$SIGNING_CONFIG_DIR/signing-identity.txt"
 
 ensure_command() {
   if ! command -v "$1" >/dev/null 2>&1; then
@@ -120,6 +122,9 @@ rm -rf "$INSTALLED_APP"
 cp -R "$APP_DIR" "$INSTALLED_APP"
 xattr -dr com.apple.quarantine "$INSTALLED_APP" 2>/dev/null || true
 SIGNING_IDENTITY="${ONEFPS_SIGNING_IDENTITY:-}"
+if [[ -z "$SIGNING_IDENTITY" && -f "$SIGNING_CONFIG" ]]; then
+  SIGNING_IDENTITY="$(head -n 1 "$SIGNING_CONFIG" | tr -d '\r\n')"
+fi
 if [[ -z "$SIGNING_IDENTITY" ]]; then
   SIGNING_IDENTITY="$(security find-identity -p codesigning -v 2>/dev/null | awk -F '\"' '/Developer ID Application:/{print $2; exit}')"
 fi
@@ -132,10 +137,24 @@ if [[ -n "${SIGNING_IDENTITY:-}" ]]; then
   else
     codesign --force --deep --sign "$SIGNING_IDENTITY" "$INSTALLED_APP"
   fi
+  codesign --verify --deep --strict --verbose=2 "$INSTALLED_APP"
+  TEAM_IDENTIFIER="$(codesign -dv --verbose=4 "$INSTALLED_APP" 2>&1 | awk -F= '/^TeamIdentifier=/{print $2; exit}')"
+  if [[ -z "$TEAM_IDENTIFIER" || "$TEAM_IDENTIFIER" == "not set" ]]; then
+    echo "安定した署名を確認できませんでした。画面収録権限を維持できないため、インストールを停止します。"
+    exit 3
+  fi
+  mkdir -p "$SIGNING_CONFIG_DIR"
+  printf '%s\n' "$SIGNING_IDENTITY" > "$SIGNING_CONFIG"
   echo "Signed with: $SIGNING_IDENTITY"
-else
+  echo "Signing team: $TEAM_IDENTIFIER"
+elif [[ "${ONEFPS_ALLOW_ADHOC:-0}" == "1" ]]; then
   codesign --force --deep --sign - "$INSTALLED_APP"
-  echo "Signed with: ad-hoc"
+  echo "Signed with: ad-hoc (画面収録権限はアプリ更新時に再許可が必要です)"
+else
+  echo "コード署名証明書が見つかりません。"
+  echo "アドホック署名で更新するとmacOSの画面収録権限が失効するため、既定では停止します。"
+  echo "一時検証だけ行う場合: ONEFPS_ALLOW_ADHOC=1 ./install.sh"
+  exit 3
 fi
 
 mkdir -p "$AGENT_DIR"

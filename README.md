@@ -34,11 +34,13 @@ cd visdev_rec
 xcode-select --install
 ```
 
-この方法では利用者のMac上でアプリをビルドして `~/Applications/OneFPSRecorder.app` に入れます。正式なDeveloper ID署名版ではないため、macOSの許可確認が署名済み配布版より多く出ることがあります。
+この方法では利用者のMac上でアプリをビルドして `~/Applications/OneFPSRecorder.app` に入れます。インストーラは `Developer ID Application` または `Apple Development` の署名証明書を探し、採用した署名を次回更新でも再利用します。これにより、更新のたびにmacOSの画面収録権限が別アプリ扱いになる事故を防ぎます。
+
+署名証明書が無い場合、インストーラは既定で停止します。一時検証に限り `ONEFPS_ALLOW_ADHOC=1 ./install.sh` でアドホック署名を許可できますが、更新後に画面収録を再許可する必要があります。
 
 ## 開発用メモ
 
-開発ビルドを入れ替える場合、macOS が更新後のアプリを別物として扱い、画面収録の許可を再確認することがあります。通常利用では `~/Applications/OneFPSRecorder.app` だけを使い、別の場所にある同名アプリから起動しないでください。
+開発ビルドを入れ替える場合も、同じ署名証明書とBundle IDを維持してください。アドホック署名はビルドごとに識別情報が変わり、システム設定でONに見えても新しい実行ファイルには画面収録権限が届かないことがあります。通常利用では `~/Applications/OneFPSRecorder.app` だけを使い、別の場所にある同名アプリから起動しないでください。
 
 ## 使い方
 
