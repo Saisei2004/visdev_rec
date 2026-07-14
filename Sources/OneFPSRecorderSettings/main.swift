@@ -225,7 +225,7 @@ enum SharedSettings {
         }
     }
 
-    static var popupPreset: String { get { savedText(forKey: popupPresetKey, fallback: "minimal") } set { defaults.set(newValue, forKey: popupPresetKey) } }
+    static var popupPreset: String { get { savedText(forKey: popupPresetKey, fallback: "standard") } set { defaults.set(newValue, forKey: popupPresetKey) } }
     static var popupWidth: CGFloat { get { let value = defaults.double(forKey: popupWidthKey); return value > 0 ? CGFloat(min(max(value, 240), 900)) : 360 } set { defaults.set(Double(min(max(newValue, 240), 900)), forKey: popupWidthKey) } }
     static var popupShowTitle: Bool { get { boolSetting(popupShowTitleKey, fallback: true) } set { defaults.set(newValue, forKey: popupShowTitleKey) } }
     static var popupShowMessage: Bool { get { boolSetting(popupShowMessageKey, fallback: true) } set { defaults.set(newValue, forKey: popupShowMessageKey) } }

@@ -259,8 +259,8 @@ enum RecorderSettings {
     }
 
     static var popupPreset: String {
-        get { savedText(forKey: popupPresetKey, fallback: "minimal") }
-        set { defaults.set(["standard", "minimal", "custom"].contains(newValue) ? newValue : "minimal", forKey: popupPresetKey) }
+        get { savedText(forKey: popupPresetKey, fallback: "standard") }
+        set { defaults.set(["standard", "minimal", "custom"].contains(newValue) ? newValue : "standard", forKey: popupPresetKey) }
     }
 
     static var popupWidth: CGFloat {
