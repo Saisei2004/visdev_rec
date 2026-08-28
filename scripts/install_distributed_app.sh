@@ -14,14 +14,19 @@ if [[ ! -d "$SOURCE_APP" ]]; then
   exit 1
 fi
 
-if find "$HOME/Movies/1FPS録画" -maxdepth 3 -type d -name '.frames-*' 2>/dev/null | grep -q .; then
-  echo "保存前の一時フレームが残っています。録画停止と保存完了を待ってから、もう一度実行してください。"
+if find "$HOME/Movies/1FPS録画" -maxdepth 3 -path '*/.frames-*/*' -type f -mmin -2 2>/dev/null | grep -q .; then
+  echo "直近2分以内に更新された一時フレームがあります。録画停止と保存完了を待ってから、もう一度実行してください。"
+  echo "古い一時フレームはアプリ起動時に自動復旧します。"
   exit 2
 fi
 
 mkdir -p "$INSTALL_DIR" "$AGENT_DIR"
 launchctl bootout "gui/$(id -u)" "$AGENT_PLIST" 2>/dev/null || true
 pkill -f "$INSTALLED_APP/Contents/MacOS/$APP_NAME" 2>/dev/null || true
+sleep 1
+if [[ -d "$INSTALLED_APP" ]]; then
+  chmod -R u+w "$INSTALLED_APP" 2>/dev/null || true
+fi
 rm -rf "$INSTALLED_APP"
 ditto "$SOURCE_APP" "$INSTALLED_APP"
 xattr -dr com.apple.quarantine "$INSTALLED_APP" 2>/dev/null || true

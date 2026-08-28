@@ -21,6 +21,11 @@ enum SharedSettings {
     private static let pauseOnMouseIdleKey = "pauseOnMouseIdle"
     private static let autoResumeOnMouseMoveKey = "autoResumeOnMouseMove"
     private static let mouseIdleMinutesKey = "mouseIdleMinutes"
+    private static let agentLinkedRecordingKey = "agentLinkedRecording"
+    private static let agentStopSoundKey = "agentStopSound"
+    private static let agentIdleStopSecondsKey = "agentIdleStopSeconds"
+    private static let agentWatchCodexKey = "agentWatchCodex"
+    private static let agentWatchClaudeKey = "agentWatchClaude"
     private static let captureDisplayIDKey = "captureDisplayID"
     private static let popupPresetKey = "popupPreset"
     private static let popupWidthKey = "popupWidth"
@@ -206,6 +211,44 @@ enum SharedSettings {
             return value > 0 ? value : 5
         }
         set { defaults.set(min(max(1, newValue), 180), forKey: mouseIdleMinutesKey) }
+    }
+
+    static var agentLinkedRecording: Bool {
+        get { defaults.bool(forKey: agentLinkedRecordingKey) }
+        set { defaults.set(newValue, forKey: agentLinkedRecordingKey) }
+    }
+
+    static var agentStopSound: Bool {
+        get { defaults.bool(forKey: agentStopSoundKey) }
+        set { defaults.set(newValue, forKey: agentStopSoundKey) }
+    }
+
+    static var agentIdleStopSeconds: Int {
+        get {
+            let value = defaults.integer(forKey: agentIdleStopSecondsKey)
+            return value > 0 ? value : 60
+        }
+        set { defaults.set(min(max(10, newValue), 3600), forKey: agentIdleStopSecondsKey) }
+    }
+
+    static var agentWatchCodex: Bool {
+        get {
+            if defaults.object(forKey: agentWatchCodexKey) == nil {
+                return true
+            }
+            return defaults.bool(forKey: agentWatchCodexKey)
+        }
+        set { defaults.set(newValue, forKey: agentWatchCodexKey) }
+    }
+
+    static var agentWatchClaude: Bool {
+        get {
+            if defaults.object(forKey: agentWatchClaudeKey) == nil {
+                return true
+            }
+            return defaults.bool(forKey: agentWatchClaudeKey)
+        }
+        set { defaults.set(newValue, forKey: agentWatchClaudeKey) }
     }
 
     static var captureDisplayID: CGDirectDisplayID? {
@@ -500,6 +543,11 @@ final class SettingsDelegate: NSObject, NSApplicationDelegate {
     private let pauseOnMouseIdleCheckbox = NSButton(checkboxWithTitle: "マウス無操作で一時停止する", target: nil, action: nil)
     private let autoResumeOnMouseMoveCheckbox = NSButton(checkboxWithTitle: "マウスが動いたら自動再開する", target: nil, action: nil)
     private let mouseIdleMinutesField = NSTextField(string: "\(SharedSettings.mouseIdleMinutes)")
+    private let agentLinkedCheckbox = NSButton(checkboxWithTitle: "Codex / Claude の処理中だけ録画する", target: nil, action: nil)
+    private let agentStopSoundCheckbox = NSButton(checkboxWithTitle: "停止時に通知音を1回鳴らす", target: nil, action: nil)
+    private let agentWatchCodexCheckbox = NSButton(checkboxWithTitle: "Codex", target: nil, action: nil)
+    private let agentWatchClaudeCheckbox = NSButton(checkboxWithTitle: "Claude", target: nil, action: nil)
+    private let agentIdleSecondsField = NSTextField(string: "\(SharedSettings.agentIdleStopSeconds)")
     private let captureTargetPopup = NSPopUpButton(frame: .zero, pullsDown: false)
     private let reportDefaultsButton = NSButton(title: "業務報告初期値...", target: nil, action: nil)
     private let advancedButton = NSButton(title: "詳細設定...", target: nil, action: nil)
@@ -936,6 +984,11 @@ final class SettingsDelegate: NSObject, NSApplicationDelegate {
         pauseOnMouseIdleCheckbox.state = SharedSettings.pauseOnMouseIdle ? .on : .off
         autoResumeOnMouseMoveCheckbox.state = SharedSettings.autoResumeOnMouseMove ? .on : .off
         mouseIdleMinutesField.stringValue = "\(SharedSettings.mouseIdleMinutes)"
+        agentLinkedCheckbox.state = SharedSettings.agentLinkedRecording ? .on : .off
+        agentStopSoundCheckbox.state = SharedSettings.agentStopSound ? .on : .off
+        agentWatchCodexCheckbox.state = SharedSettings.agentWatchCodex ? .on : .off
+        agentWatchClaudeCheckbox.state = SharedSettings.agentWatchClaude ? .on : .off
+        agentIdleSecondsField.stringValue = "\(SharedSettings.agentIdleStopSeconds)"
         reloadCaptureTargetPopup()
         showReportMenuCheckbox.state = SharedSettings.showReportMenu ? .on : .off
         advancedWindow?.center()
@@ -945,7 +998,7 @@ final class SettingsDelegate: NSObject, NSApplicationDelegate {
 
     private func buildAdvancedWindow() {
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 540, height: 624),
+            contentRect: NSRect(x: 0, y: 0, width: 540, height: 784),
             styleMask: [.titled, .closable],
             backing: .buffered,
             defer: false
@@ -954,98 +1007,130 @@ final class SettingsDelegate: NSObject, NSApplicationDelegate {
         window.isReleasedWhenClosed = false
         advancedWindow = window
 
-        let content = NSView(frame: NSRect(x: 0, y: 0, width: 540, height: 598))
+        let content = NSView(frame: NSRect(x: 0, y: 0, width: 540, height: 758))
         window.contentView = content
 
         let captureTitle = NSTextField(labelWithString: "録画する画面")
         captureTitle.font = NSFont.systemFont(ofSize: 13, weight: .semibold)
-        captureTitle.frame = NSRect(x: 30, y: 538, width: 100, height: 20)
+        captureTitle.frame = NSRect(x: 30, y: 698, width: 100, height: 20)
 
-        captureTargetPopup.frame = NSRect(x: 150, y: 532, width: 260, height: 28)
+        captureTargetPopup.frame = NSRect(x: 150, y: 692, width: 260, height: 28)
         reloadCaptureTargetPopup()
 
         let captureHint = NSTextField(labelWithString: "固定を選ぶと、マウスを別画面へ移動しても録画先は変わりません。")
         captureHint.font = NSFont.systemFont(ofSize: 11)
         captureHint.textColor = .secondaryLabelColor
-        captureHint.frame = NSRect(x: 150, y: 510, width: 360, height: 18)
+        captureHint.frame = NSRect(x: 150, y: 670, width: 360, height: 18)
 
         let displayTitle = NSTextField(labelWithString: "表示")
         displayTitle.font = NSFont.systemFont(ofSize: 13, weight: .semibold)
-        displayTitle.frame = NSRect(x: 30, y: 478, width: 90, height: 20)
+        displayTitle.frame = NSRect(x: 30, y: 638, width: 90, height: 20)
 
         overlayCheckbox.state = SharedSettings.showOverlay ? .on : .off
-        overlayCheckbox.frame = NSRect(x: 150, y: 478, width: 240, height: 22)
+        overlayCheckbox.frame = NSRect(x: 150, y: 638, width: 240, height: 22)
 
         pauseOverlayCheckbox.state = SharedSettings.showPauseOverlay ? .on : .off
-        pauseOverlayCheckbox.frame = NSRect(x: 150, y: 450, width: 240, height: 22)
+        pauseOverlayCheckbox.frame = NSRect(x: 150, y: 610, width: 240, height: 22)
 
         menuBarIconCheckbox.state = SharedSettings.showMenuBarIcon ? .on : .off
-        menuBarIconCheckbox.frame = NSRect(x: 150, y: 422, width: 280, height: 22)
+        menuBarIconCheckbox.frame = NSRect(x: 150, y: 582, width: 280, height: 22)
 
         menuBarTimeCheckbox.state = SharedSettings.showMenuBarTime ? .on : .off
-        menuBarTimeCheckbox.frame = NSRect(x: 150, y: 394, width: 280, height: 22)
+        menuBarTimeCheckbox.frame = NSRect(x: 150, y: 554, width: 280, height: 22)
 
         menuBarScoreCheckbox.state = SharedSettings.showMenuBarScore ? .on : .off
-        menuBarScoreCheckbox.frame = NSRect(x: 150, y: 366, width: 280, height: 22)
+        menuBarScoreCheckbox.frame = NSRect(x: 150, y: 526, width: 280, height: 22)
 
         let displayHint = NSTextField(labelWithString: "アイコンOFF時はパネルと設定画面だけで操作します。時間とスコアは録画中だけ表示します。")
         displayHint.font = NSFont.systemFont(ofSize: 11)
         displayHint.textColor = .secondaryLabelColor
-        displayHint.frame = NSRect(x: 150, y: 340, width: 360, height: 18)
+        displayHint.frame = NSRect(x: 150, y: 500, width: 360, height: 18)
 
         let scoreTitle = NSTextField(labelWithString: "月間スコア")
         scoreTitle.font = NSFont.systemFont(ofSize: 13, weight: .semibold)
-        scoreTitle.frame = NSRect(x: 30, y: 304, width: 90, height: 20)
+        scoreTitle.frame = NSRect(x: 30, y: 464, width: 90, height: 20)
 
         monthlyScoreCheckbox.state = SharedSettings.showMonthlyScore ? .on : .off
-        monthlyScoreCheckbox.frame = NSRect(x: 150, y: 304, width: 200, height: 22)
+        monthlyScoreCheckbox.frame = NSRect(x: 150, y: 464, width: 200, height: 22)
 
         resetMonthlyScoreButton.target = self
         resetMonthlyScoreButton.action = #selector(resetMonthlyScorePressed)
         resetMonthlyScoreButton.bezelStyle = .rounded
-        resetMonthlyScoreButton.frame = NSRect(x: 390, y: 298, width: 120, height: 28)
+        resetMonthlyScoreButton.frame = NSRect(x: 390, y: 458, width: 120, height: 28)
 
         let hourlyRateLabel = NSTextField(labelWithString: "係数")
         hourlyRateLabel.font = NSFont.systemFont(ofSize: 12)
-        hourlyRateLabel.frame = NSRect(x: 150, y: 268, width: 60, height: 20)
+        hourlyRateLabel.frame = NSRect(x: 150, y: 428, width: 60, height: 20)
 
-        hourlyRateField.frame = NSRect(x: 210, y: 262, width: 100, height: 28)
+        hourlyRateField.frame = NSRect(x: 210, y: 422, width: 100, height: 28)
         hourlyRateField.placeholderString = "2000"
 
         let goalLabel = NSTextField(labelWithString: "月末ライン")
         goalLabel.font = NSFont.systemFont(ofSize: 12)
-        goalLabel.frame = NSRect(x: 330, y: 268, width: 78, height: 20)
+        goalLabel.frame = NSRect(x: 330, y: 428, width: 78, height: 20)
 
-        monthlyGoalField.frame = NSRect(x: 410, y: 262, width: 100, height: 28)
+        monthlyGoalField.frame = NSRect(x: 410, y: 422, width: 100, height: 28)
         monthlyGoalField.placeholderString = "100000"
 
         glowCheckbox.state = SharedSettings.glowWhenGoalReached ? .on : .off
-        glowCheckbox.frame = NSRect(x: 150, y: 232, width: 220, height: 22)
+        glowCheckbox.frame = NSRect(x: 150, y: 392, width: 220, height: 22)
 
         let scoreHint = NSTextField(labelWithString: "係数の標準値は 2000。月末ラインを超えると録画中パネルが発光できます。")
         scoreHint.font = NSFont.systemFont(ofSize: 11)
         scoreHint.textColor = .secondaryLabelColor
-        scoreHint.frame = NSRect(x: 150, y: 206, width: 360, height: 18)
+        scoreHint.frame = NSRect(x: 150, y: 366, width: 360, height: 18)
 
         let pauseTitle = NSTextField(labelWithString: "自動一時停止")
         pauseTitle.font = NSFont.systemFont(ofSize: 13, weight: .semibold)
-        pauseTitle.frame = NSRect(x: 30, y: 170, width: 100, height: 20)
+        pauseTitle.frame = NSRect(x: 30, y: 330, width: 100, height: 20)
 
         pauseOnSleepCheckbox.state = SharedSettings.pauseOnSleep ? .on : .off
-        pauseOnSleepCheckbox.frame = NSRect(x: 150, y: 170, width: 220, height: 22)
+        pauseOnSleepCheckbox.frame = NSRect(x: 150, y: 330, width: 220, height: 22)
 
         pauseOnMouseIdleCheckbox.state = SharedSettings.pauseOnMouseIdle ? .on : .off
-        pauseOnMouseIdleCheckbox.frame = NSRect(x: 150, y: 142, width: 220, height: 22)
+        pauseOnMouseIdleCheckbox.frame = NSRect(x: 150, y: 302, width: 220, height: 22)
 
         autoResumeOnMouseMoveCheckbox.state = SharedSettings.autoResumeOnMouseMove ? .on : .off
-        autoResumeOnMouseMoveCheckbox.frame = NSRect(x: 150, y: 114, width: 240, height: 22)
+        autoResumeOnMouseMoveCheckbox.frame = NSRect(x: 150, y: 274, width: 240, height: 22)
 
         let idleMinutesLabel = NSTextField(labelWithString: "無操作分")
         idleMinutesLabel.font = NSFont.systemFont(ofSize: 12)
-        idleMinutesLabel.frame = NSRect(x: 350, y: 144, width: 60, height: 20)
+        idleMinutesLabel.frame = NSRect(x: 350, y: 304, width: 60, height: 20)
 
-        mouseIdleMinutesField.frame = NSRect(x: 410, y: 138, width: 100, height: 28)
+        mouseIdleMinutesField.frame = NSRect(x: 410, y: 298, width: 100, height: 28)
         mouseIdleMinutesField.placeholderString = "5"
+
+        let agentTitle = NSTextField(labelWithString: "エージェント連動")
+        agentTitle.font = NSFont.systemFont(ofSize: 13, weight: .semibold)
+        agentTitle.frame = NSRect(x: 30, y: 226, width: 116, height: 20)
+
+        agentLinkedCheckbox.state = SharedSettings.agentLinkedRecording ? .on : .off
+        agentLinkedCheckbox.frame = NSRect(x: 150, y: 226, width: 340, height: 22)
+
+        agentStopSoundCheckbox.state = SharedSettings.agentStopSound ? .on : .off
+        agentStopSoundCheckbox.frame = NSRect(x: 150, y: 198, width: 340, height: 22)
+
+        let agentWatchLabel = NSTextField(labelWithString: "監視対象")
+        agentWatchLabel.font = NSFont.systemFont(ofSize: 12)
+        agentWatchLabel.frame = NSRect(x: 150, y: 172, width: 70, height: 20)
+
+        agentWatchCodexCheckbox.state = SharedSettings.agentWatchCodex ? .on : .off
+        agentWatchCodexCheckbox.frame = NSRect(x: 240, y: 170, width: 80, height: 22)
+
+        agentWatchClaudeCheckbox.state = SharedSettings.agentWatchClaude ? .on : .off
+        agentWatchClaudeCheckbox.frame = NSRect(x: 330, y: 170, width: 90, height: 22)
+
+        let agentIdleLabel = NSTextField(labelWithString: "停止判定秒")
+        agentIdleLabel.font = NSFont.systemFont(ofSize: 12)
+        agentIdleLabel.frame = NSRect(x: 150, y: 144, width: 80, height: 20)
+
+        agentIdleSecondsField.frame = NSRect(x: 240, y: 138, width: 80, height: 28)
+        agentIdleSecondsField.placeholderString = "60"
+
+        let agentHint = NSTextField(labelWithString: "Codex / Claude が静かになって停止判定秒たつと録画を止め、通知音を鳴らせます。")
+        agentHint.font = NSFont.systemFont(ofSize: 11)
+        agentHint.textColor = .secondaryLabelColor
+        agentHint.frame = NSRect(x: 150, y: 114, width: 380, height: 18)
 
         let reportTitle = NSTextField(labelWithString: "業務報告")
         reportTitle.font = NSFont.systemFont(ofSize: 13, weight: .semibold)
@@ -1093,6 +1178,15 @@ final class SettingsDelegate: NSObject, NSApplicationDelegate {
         content.addSubview(autoResumeOnMouseMoveCheckbox)
         content.addSubview(idleMinutesLabel)
         content.addSubview(mouseIdleMinutesField)
+        content.addSubview(agentTitle)
+        content.addSubview(agentLinkedCheckbox)
+        content.addSubview(agentStopSoundCheckbox)
+        content.addSubview(agentWatchLabel)
+        content.addSubview(agentWatchCodexCheckbox)
+        content.addSubview(agentWatchClaudeCheckbox)
+        content.addSubview(agentIdleLabel)
+        content.addSubview(agentIdleSecondsField)
+        content.addSubview(agentHint)
         content.addSubview(reportTitle)
         content.addSubview(showReportMenuCheckbox)
         content.addSubview(reportDefaultsButton)
@@ -1114,6 +1208,11 @@ final class SettingsDelegate: NSObject, NSApplicationDelegate {
         SharedSettings.pauseOnMouseIdle = pauseOnMouseIdleCheckbox.state == .on
         SharedSettings.autoResumeOnMouseMove = autoResumeOnMouseMoveCheckbox.state == .on
         SharedSettings.mouseIdleMinutes = Int(mouseIdleMinutesField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)) ?? 5
+        SharedSettings.agentLinkedRecording = agentLinkedCheckbox.state == .on
+        SharedSettings.agentStopSound = agentStopSoundCheckbox.state == .on
+        SharedSettings.agentWatchCodex = agentWatchCodexCheckbox.state == .on
+        SharedSettings.agentWatchClaude = agentWatchClaudeCheckbox.state == .on
+        SharedSettings.agentIdleStopSeconds = Int(agentIdleSecondsField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)) ?? 60
         let selectedDisplayID = (captureTargetPopup.selectedItem?.representedObject as? NSNumber)?.uint32Value ?? 0
         SharedSettings.captureDisplayID = selectedDisplayID == 0 ? nil : selectedDisplayID
         SharedSettings.showReportMenu = showReportMenuCheckbox.state == .on

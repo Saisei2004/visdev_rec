@@ -22,6 +22,11 @@ enum RecorderSettings {
     private static let pauseOnMouseIdleKey = "pauseOnMouseIdle"
     private static let autoResumeOnMouseMoveKey = "autoResumeOnMouseMove"
     private static let mouseIdleMinutesKey = "mouseIdleMinutes"
+    private static let agentLinkedRecordingKey = "agentLinkedRecording"
+    private static let agentStopSoundKey = "agentStopSound"
+    private static let agentIdleStopSecondsKey = "agentIdleStopSeconds"
+    private static let agentWatchCodexKey = "agentWatchCodex"
+    private static let agentWatchClaudeKey = "agentWatchClaude"
     private static let captureDisplayIDKey = "captureDisplayID"
     private static let popupPresetKey = "popupPreset"
     private static let popupWidthKey = "popupWidth"
@@ -237,6 +242,53 @@ enum RecorderSettings {
             return value > 0 ? value : 5
         }
         set { defaults.set(min(max(1, newValue), 180), forKey: mouseIdleMinutesKey) }
+    }
+
+    static var agentLinkedRecording: Bool {
+        get {
+            defaults.synchronize()
+            return defaults.bool(forKey: agentLinkedRecordingKey)
+        }
+        set { defaults.set(newValue, forKey: agentLinkedRecordingKey) }
+    }
+
+    static var agentStopSound: Bool {
+        get {
+            defaults.synchronize()
+            return defaults.bool(forKey: agentStopSoundKey)
+        }
+        set { defaults.set(newValue, forKey: agentStopSoundKey) }
+    }
+
+    static var agentIdleStopSeconds: Int {
+        get {
+            defaults.synchronize()
+            let value = defaults.integer(forKey: agentIdleStopSecondsKey)
+            return value > 0 ? value : 60
+        }
+        set { defaults.set(min(max(10, newValue), 3600), forKey: agentIdleStopSecondsKey) }
+    }
+
+    static var agentWatchCodex: Bool {
+        get {
+            defaults.synchronize()
+            if defaults.object(forKey: agentWatchCodexKey) == nil {
+                return true
+            }
+            return defaults.bool(forKey: agentWatchCodexKey)
+        }
+        set { defaults.set(newValue, forKey: agentWatchCodexKey) }
+    }
+
+    static var agentWatchClaude: Bool {
+        get {
+            defaults.synchronize()
+            if defaults.object(forKey: agentWatchClaudeKey) == nil {
+                return true
+            }
+            return defaults.bool(forKey: agentWatchClaudeKey)
+        }
+        set { defaults.set(newValue, forKey: agentWatchClaudeKey) }
     }
 
     /// nil keeps the legacy behavior: capture whichever display contains the mouse.
@@ -468,6 +520,193 @@ struct StoredReportEntry: Codable {
     var message: String
 }
 
+struct AgentActivitySample {
+    let matchedProcessCount: Int
+    let busyCPUSeconds: Double
+    let busyAgentCount: Int
+    let isBusy: Bool
+}
+
+/// Codex / Claude のCLIプロセス（とその子プロセス）のCPU時間を定期サンプリングし、
+/// エージェントが実際に処理中かどうかを判定する。
+final class AgentActivityMonitor {
+    static let sampleInterval: TimeInterval = 5.0
+    /// 1サンプル間隔あたり、1エージェント（ルートプロセス+子プロセス）のCPU時間が
+    /// この秒数以上なら「処理中」とみなす。アイドルで開いたままのセッションにも
+    /// 微小なCPU（実測 約0.1s/10s）が常時あるため、その揺らぎより高くしてある
+    private static let busyCPUThresholdPerAgent: Double = 0.15
+    /// ChatGPTアプリが裏で常時動かすCodex Chronicle（画面要約）は作業とみなさない
+    private static let excludedArgumentMarkers = ["chronicle", "memgen"]
+
+    private struct ProcessRecord {
+        let pid: Int32
+        let ppid: Int32
+        let cpuSeconds: Double
+        let executablePath: String
+    }
+
+    private var previousCPUTimes: [Int32: Double] = [:]
+    private var hasBaseline = false
+
+    func reset() {
+        previousCPUTimes.removeAll()
+        hasBaseline = false
+    }
+
+    func sample() -> AgentActivitySample {
+        let records = Self.listProcesses()
+        let trees = Self.agentProcessTrees(in: records)
+        guard !trees.isEmpty else {
+            previousCPUTimes.removeAll()
+            hasBaseline = true
+            return AgentActivitySample(matchedProcessCount: 0, busyCPUSeconds: 0, busyAgentCount: 0, isBusy: false)
+        }
+
+        var recordsByPID: [Int32: ProcessRecord] = [:]
+        for record in records {
+            recordsByPID[record.pid] = record
+        }
+        var currentTimes: [Int32: Double] = [:]
+        var totalDelta: Double = 0
+        var busyAgentCount = 0
+        for tree in trees {
+            var treeDelta: Double = 0
+            for pid in tree {
+                guard let record = recordsByPID[pid] else { continue }
+                let delta = max(0, record.cpuSeconds - (previousCPUTimes[pid] ?? 0))
+                treeDelta += delta
+                if currentTimes[pid] == nil {
+                    totalDelta += delta
+                    currentTimes[pid] = record.cpuSeconds
+                }
+            }
+            if treeDelta >= Self.busyCPUThresholdPerAgent {
+                busyAgentCount += 1
+            }
+        }
+        let baselineReady = hasBaseline
+        previousCPUTimes = currentTimes
+        hasBaseline = true
+        guard baselineReady else {
+            return AgentActivitySample(matchedProcessCount: currentTimes.count, busyCPUSeconds: 0, busyAgentCount: 0, isBusy: false)
+        }
+        return AgentActivitySample(
+            matchedProcessCount: currentTimes.count,
+            busyCPUSeconds: totalDelta,
+            busyAgentCount: busyAgentCount,
+            isBusy: busyAgentCount > 0
+        )
+    }
+
+    private static func listProcesses() -> [ProcessRecord] {
+        guard let output = runPS(arguments: ["-axo", "pid=,ppid=,time=,comm="]) else { return [] }
+        var records: [ProcessRecord] = []
+        for line in output.split(separator: "\n") {
+            let parts = line.split(separator: " ", maxSplits: 3, omittingEmptySubsequences: true)
+            guard parts.count == 4,
+                  let pid = Int32(parts[0]),
+                  let ppid = Int32(parts[1]) else { continue }
+            records.append(ProcessRecord(
+                pid: pid,
+                ppid: ppid,
+                cpuSeconds: cpuSeconds(from: String(parts[2])),
+                executablePath: String(parts[3])
+            ))
+        }
+        return records
+    }
+
+    /// 監視対象のCLI実行ファイル名。ローカルプロセスだけが対象なので、
+    /// クラウド側で実行されるタスクは検知されない。
+    private static func watchedExecutableNames() -> Set<String> {
+        var names = Set<String>()
+        if RecorderSettings.agentWatchCodex { names.insert("codex") }
+        if RecorderSettings.agentWatchClaude { names.insert("claude") }
+        return names
+    }
+
+    /// エージェント（ルートプロセス）ごとに、そのプロセスと子孫プロセスのPID一覧を返す
+    private static func agentProcessTrees(in records: [ProcessRecord]) -> [[Int32]] {
+        let watched = watchedExecutableNames()
+        guard !watched.isEmpty else { return [] }
+        var rootPIDs: [Int32] = []
+        var codexCandidates: [Int32] = []
+        for record in records {
+            let name = (record.executablePath as NSString).lastPathComponent
+            guard watched.contains(name) else { continue }
+            if name == "codex" {
+                codexCandidates.append(record.pid)
+            } else {
+                rootPIDs.append(record.pid)
+            }
+        }
+        rootPIDs.append(contentsOf: filterExcludedCodexProcesses(codexCandidates))
+        guard !rootPIDs.isEmpty else { return [] }
+
+        var childrenByParent: [Int32: [Int32]] = [:]
+        for record in records {
+            childrenByParent[record.ppid, default: []].append(record.pid)
+        }
+        var trees: [[Int32]] = []
+        for root in rootPIDs {
+            var members: [Int32] = []
+            var visited = Set<Int32>()
+            var queue = [root]
+            while let pid = queue.popLast() {
+                guard visited.insert(pid).inserted else { continue }
+                members.append(pid)
+                queue.append(contentsOf: childrenByParent[pid] ?? [])
+            }
+            trees.append(members)
+        }
+        return trees
+    }
+
+    private static func filterExcludedCodexProcesses(_ pids: [Int32]) -> [Int32] {
+        guard !pids.isEmpty else { return [] }
+        let pidList = pids.map(String.init).joined(separator: ",")
+        guard let output = runPS(arguments: ["-ww", "-p", pidList, "-o", "pid=,args="]) else { return pids }
+        var excluded = Set<Int32>()
+        for line in output.split(separator: "\n") {
+            let parts = line.split(separator: " ", maxSplits: 1, omittingEmptySubsequences: true)
+            guard parts.count == 2, let pid = Int32(parts[0]) else { continue }
+            let args = parts[1].lowercased()
+            if excludedArgumentMarkers.contains(where: { args.contains($0) }) {
+                excluded.insert(pid)
+            }
+        }
+        return pids.filter { !excluded.contains($0) }
+    }
+
+    private static func runPS(arguments: [String]) -> String? {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/bin/ps")
+        process.arguments = arguments
+        let pipe = Pipe()
+        process.standardOutput = pipe
+        process.standardError = FileHandle.nullDevice
+        do {
+            try process.run()
+        } catch {
+            return nil
+        }
+        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        process.waitUntilExit()
+        return String(data: data, encoding: .utf8)
+    }
+
+    /// psのtime表記（"1:02.34" や "12:03:04" など）を秒に変換する
+    private static func cpuSeconds(from timeField: String) -> Double {
+        var seconds: Double = 0
+        var multiplier: Double = 1
+        for component in timeField.split(separator: ":").reversed() {
+            seconds += (Double(component) ?? 0) * multiplier
+            multiplier *= 60
+        }
+        return seconds
+    }
+}
+
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private static let appSupportDirectory = FileManager.default.homeDirectoryForCurrentUser
         .appendingPathComponent("Library", isDirectory: true)
@@ -501,6 +740,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var lastMouseMovedAt = Date()
     private var autoPausedBySleep = false
     private var autoPausedByMouseIdle = false
+    private let agentMonitor = AgentActivityMonitor()
+    private var agentMonitorTimer: DispatchSourceTimer?
+    private let agentSampleQueue = DispatchQueue(label: "local.codex.OneFPSRecorder.agent-monitor", qos: .utility)
+    private var agentActive = false
+    private var agentBusyStreak = 0
+    private var agentLastBusyAt = Date.distantPast
+    private var agentModeMenuItem: NSMenuItem?
+    private var agentStopSoundPlayer: NSSound?
     private let launchedInBackground = CommandLine.arguments.contains("--background")
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -553,6 +800,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         )
         setupCommandNotifications()
         setupAutomaticPauseHandling()
+        setupAgentActivityMonitoring()
         applyStatus(.idle)
         log("OneFPSRecorder launched")
         if recoveryReport.hasEvents {
@@ -578,6 +826,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         commandTimer?.cancel()
         activityTimer?.cancel()
+        agentMonitorTimer?.cancel()
         NSWorkspace.shared.notificationCenter.removeObserver(self)
         if let lockFileHandle {
             flock(lockFileHandle.fileDescriptor, LOCK_UN)
@@ -623,6 +872,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self.statusItem = nil
             reportMenuItem = nil
             pauseStopMenuItem = nil
+            agentModeMenuItem = nil
         }
     }
 
@@ -646,6 +896,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let captureTargetItem = NSMenuItem(title: "録画する画面", action: nil, keyEquivalent: "")
         captureTargetItem.submenu = makeCaptureTargetMenu()
         menu.addItem(captureTargetItem)
+
+        let agentModeItem = NSMenuItem(title: "Codex/Claude連動録画", action: #selector(toggleAgentLinkedRecording), keyEquivalent: "")
+        agentModeItem.target = self
+        agentModeItem.state = RecorderSettings.agentLinkedRecording ? .on : .off
+        agentModeMenuItem = agentModeItem
+        menu.addItem(agentModeItem)
 
         let reportItem = NSMenuItem(title: "1日分の業務報告を提出...", action: #selector(openReportSubmission), keyEquivalent: "")
         reportItem.target = self
@@ -800,6 +1056,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func refreshMenuVisibility() {
         reportMenuItem?.isHidden = !RecorderSettings.showReportMenu
+        agentModeMenuItem?.state = RecorderSettings.agentLinkedRecording ? .on : .off
     }
 
     private func setMenuBarDisplay(title: String, symbolName: String, tint: NSColor?) {
@@ -1076,6 +1333,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         guard RecorderSettings.pauseOnMouseIdle, recorder.isRecording else { return }
+        // エージェント連動中は、Codex/Claudeが処理中なら無操作でも作業中とみなす
+        if RecorderSettings.agentLinkedRecording, agentActive { return }
         let idleSeconds = Date().timeIntervalSince(lastMouseMovedAt)
         guard idleSeconds >= TimeInterval(RecorderSettings.mouseIdleMinutes * 60) else { return }
         log("Auto pause after mouse idle: \(Int(idleSeconds))s")
@@ -1100,6 +1359,99 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 }
             }
         }
+    }
+
+    private func setupAgentActivityMonitoring() {
+        let timer = DispatchSource.makeTimerSource(queue: agentSampleQueue)
+        timer.schedule(
+            deadline: .now() + AgentActivityMonitor.sampleInterval,
+            repeating: AgentActivityMonitor.sampleInterval,
+            leeway: .seconds(1)
+        )
+        timer.setEventHandler { [weak self] in
+            guard let self else { return }
+            guard RecorderSettings.agentLinkedRecording else {
+                self.agentMonitor.reset()
+                DispatchQueue.main.async {
+                    self.agentActive = false
+                    self.agentBusyStreak = 0
+                }
+                return
+            }
+            let sample = self.agentMonitor.sample()
+            DispatchQueue.main.async {
+                self.applyAgentActivitySample(sample)
+            }
+        }
+        agentMonitorTimer = timer
+        timer.resume()
+    }
+
+    private func applyAgentActivitySample(_ sample: AgentActivitySample) {
+        guard RecorderSettings.agentLinkedRecording else { return }
+        let now = Date()
+        if sample.isBusy {
+            agentBusyStreak += 1
+            agentLastBusyAt = now
+            // 1回だけのCPU揺らぎで誤開始しないよう、2回連続で検知したら開始
+            if !agentActive, agentBusyStreak >= 2 {
+                agentActive = true
+                agentDidBecomeActive()
+            }
+        } else {
+            agentBusyStreak = 0
+            if agentActive, now.timeIntervalSince(agentLastBusyAt) >= TimeInterval(RecorderSettings.agentIdleStopSeconds) {
+                agentActive = false
+                agentDidBecomeIdle()
+            }
+        }
+    }
+
+    private func agentDidBecomeActive() {
+        log("Agent activity detected (Codex/Claude); auto start")
+        guard !recorder.isRecording else { return }
+        manualReadyOverlayVisible = false
+        autoPausedBySleep = false
+        autoPausedByMouseIdle = false
+        overlayMessage = "Codex/Claudeの動作を検知して録画中"
+        Task {
+            do {
+                try await recorder.start()
+            } catch {
+                log("Agent auto start failed: \(error.localizedDescription)")
+                await MainActor.run {
+                    applyStatus(.error(error.localizedDescription))
+                }
+            }
+        }
+    }
+
+    private func agentDidBecomeIdle() {
+        log("Agent idle for \(RecorderSettings.agentIdleStopSeconds)s; auto stop")
+        if recorder.isRecording {
+            overlayMessage = "Codex/Claudeの停止を検知して録画停止"
+            recorder.stop()
+        }
+        if RecorderSettings.agentStopSound {
+            playAgentStopSound()
+        }
+    }
+
+    private func playAgentStopSound() {
+        let sound = NSSound(named: "Glass")
+        agentStopSoundPlayer = sound
+        sound?.play()
+    }
+
+    @objc private func toggleAgentLinkedRecording() {
+        let enabled = !RecorderSettings.agentLinkedRecording
+        RecorderSettings.agentLinkedRecording = enabled
+        if !enabled {
+            agentActive = false
+            agentBusyStreak = 0
+        }
+        agentModeMenuItem?.state = enabled ? .on : .off
+        log("Agent linked recording \(enabled ? "enabled" : "disabled") from menu")
     }
 
     @objc private func openFolder() {
@@ -2601,27 +2953,17 @@ final class OneFPSRecorder: NSObject {
             return
         }
 
-        let listURL = frameDirectory.appendingPathComponent("frames.txt")
-        let frameList = Self.frameConcatList(frameNames: frameNames, in: frameDirectory)
-        do {
-            try frameList.write(to: listURL, atomically: true, encoding: .utf8)
-        } catch {
-            DispatchQueue.main.async {
-                self.finishEncoding(success: false, errorMessage: "録画フレーム一覧の作成に失敗しました。")
-            }
-            return
-        }
-
         let ffmpeg = Self.ffmpegURL
         let process = Process()
         process.executableURL = ffmpeg
         process.arguments = [
             "-hide_banner",
             "-loglevel", "error",
-            "-f", "concat",
-            "-safe", "0",
-            "-i", listURL.path,
-            "-vf", "scale=960:600:force_original_aspect_ratio=decrease,pad=960:600:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=1",
+            "-framerate", "1",
+            "-start_number", "0",
+            "-i", frameDirectory.appendingPathComponent("frame-%06d.jpg").path,
+            "-vf", "scale=960:600:force_original_aspect_ratio=decrease,pad=960:600:(ow-iw)/2:(oh-ih)/2,setsar=1",
+            "-fps_mode", "passthrough",
             "-c:v", "libx264",
             "-preset", "veryfast",
             "-tune", "stillimage",
@@ -2739,6 +3081,7 @@ final class OneFPSRecorder: NSObject {
                 }
                 try? FileManager.default.removeItem(at: backupURL)
                 try? FileManager.default.removeItem(at: segmentURL)
+                removeInterruptedWorkingVideos(in: dailyURL.deletingLastPathComponent())
                 return true
             } catch {
                 if FileManager.default.fileExists(atPath: backupURL.path) {
@@ -3180,10 +3523,35 @@ final class OneFPSRecorder: NSObject {
             let name = fileURL.lastPathComponent
             if name.hasPrefix(".daily-backup-"), name.hasSuffix(".mp4") {
                 restoreInterruptedDailyBackup(fileURL, report: &report)
-            } else if name.hasPrefix(".daily-"), name.hasSuffix(".mp4") {
-                try? FileManager.default.removeItem(at: fileURL)
-                report.removedInterruptedDailyFiles += 1
+            } else if (name.hasPrefix(".daily-") || name.hasPrefix(".repair-")), name.hasSuffix(".mp4") {
+                if removeInterruptedWorkingVideo(fileURL) {
+                    report.removedInterruptedDailyFiles += 1
+                }
             }
+        }
+    }
+
+    private static func removeInterruptedWorkingVideos(in directory: URL) {
+        let files = (try? FileManager.default.contentsOfDirectory(
+            at: directory,
+            includingPropertiesForKeys: [.isRegularFileKey],
+            options: []
+        )) ?? []
+        for fileURL in files where fileURL.pathExtension.lowercased() == "mp4" {
+            let name = fileURL.lastPathComponent
+            if name.hasPrefix(".daily-") || name.hasPrefix(".repair-") {
+                _ = removeInterruptedWorkingVideo(fileURL)
+            }
+        }
+    }
+
+    @discardableResult
+    private static func removeInterruptedWorkingVideo(_ fileURL: URL) -> Bool {
+        do {
+            try FileManager.default.removeItem(at: fileURL)
+            return true
+        } catch {
+            return false
         }
     }
 
@@ -3264,6 +3632,9 @@ final class OneFPSRecorder: NSObject {
     }
 
     private static func recoverFrameDirectory(_ frameDirectory: URL) -> FrameRecoveryResult {
+        guard acquireFrameRecoveryLock(in: frameDirectory) else { return .failed }
+        defer { releaseFrameRecoveryLock(in: frameDirectory) }
+
         let frameNames = ((try? FileManager.default.contentsOfDirectory(atPath: frameDirectory.path)) ?? [])
             .filter { $0.hasSuffix(".jpg") }
             .sorted()
@@ -3279,10 +3650,10 @@ final class OneFPSRecorder: NSObject {
         let endedAt = startedAt.addingTimeInterval(TimeInterval(recoveredFrameCount))
         let segmentID = metadata?.id ?? UUID().uuidString
         let outputURL = frameDirectory.appendingPathComponent("recovered-\(timestamp()).mp4")
-        let listURL = frameDirectory.appendingPathComponent("frames.txt")
-        let frameList = frameConcatList(frameNames: frameNames, in: frameDirectory)
-        guard (try? frameList.write(to: listURL, atomically: true, encoding: .utf8)) != nil else {
-            return .failed
+
+        if recordingLogContainsSegmentID(segmentID, date: endedAt) {
+            try? FileManager.default.removeItem(at: frameDirectory)
+            return .recovered
         }
 
         do {
@@ -3293,10 +3664,11 @@ final class OneFPSRecorder: NSObject {
                 process.arguments = [
                     "-hide_banner",
                     "-loglevel", "error",
-                    "-f", "concat",
-                    "-safe", "0",
-                    "-i", listURL.path,
-                    "-vf", "scale=960:600:force_original_aspect_ratio=decrease,pad=960:600:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=1",
+                    "-framerate", "1",
+                    "-start_number", "0",
+                    "-i", frameDirectory.appendingPathComponent("frame-%06d.jpg").path,
+                    "-vf", "scale=960:600:force_original_aspect_ratio=decrease,pad=960:600:(ow-iw)/2:(oh-ih)/2,setsar=1",
+                    "-fps_mode", "passthrough",
                     "-c:v", "libx264",
                     "-preset", "veryfast",
                     "-tune", "stillimage",
@@ -3340,6 +3712,34 @@ final class OneFPSRecorder: NSObject {
             return .recovered
         } catch {
             return .failed
+        }
+    }
+
+    private static func acquireFrameRecoveryLock(in frameDirectory: URL) -> Bool {
+        let lockURL = frameDirectory.appendingPathComponent(".recovery.lock")
+        if let attributes = try? FileManager.default.attributesOfItem(atPath: lockURL.path),
+           let modifiedAt = attributes[.modificationDate] as? Date,
+           Date().timeIntervalSince(modifiedAt) > 1800 {
+            try? FileManager.default.removeItem(at: lockURL)
+        }
+        let fd = open(lockURL.path, O_CREAT | O_EXCL | O_WRONLY, S_IRUSR | S_IWUSR)
+        guard fd >= 0 else { return false }
+        let pidText = "\(getpid())\n"
+        _ = pidText.withCString { write(fd, $0, strlen($0)) }
+        close(fd)
+        return true
+    }
+
+    private static func releaseFrameRecoveryLock(in frameDirectory: URL) {
+        try? FileManager.default.removeItem(at: frameDirectory.appendingPathComponent(".recovery.lock"))
+    }
+
+    private static func recordingLogContainsSegmentID(_ segmentID: String, date: Date) -> Bool {
+        guard !segmentID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return false }
+        let text = (try? String(contentsOf: dailyLogURL(for: date), encoding: .utf8)) ?? ""
+        return text.split(separator: "\n").dropFirst().contains { row in
+            let columns = row.split(separator: "\t", omittingEmptySubsequences: false).map(String.init)
+            return columns.count >= 5 && columns[4] == segmentID
         }
     }
 
@@ -4344,7 +4744,17 @@ enum RecorderError: LocalizedError {
     }
 }
 
-if CommandLine.arguments.count >= 2, CommandLine.arguments[1] == "--report-config" {
+if CommandLine.arguments.count >= 2, CommandLine.arguments[1] == "--agent-activity-probe" {
+    let monitor = AgentActivityMonitor()
+    let rounds = CommandLine.arguments.count >= 3 ? (Int(CommandLine.arguments[2]) ?? 3) : 3
+    let baseline = monitor.sample()
+    print("baseline processes=\(baseline.matchedProcessCount)")
+    for index in 1...max(1, rounds) {
+        Thread.sleep(forTimeInterval: AgentActivityMonitor.sampleInterval)
+        let sample = monitor.sample()
+        print("sample=\(index) processes=\(sample.matchedProcessCount) busyCPU=\(String(format: "%.2f", sample.busyCPUSeconds))s busyAgents=\(sample.busyAgentCount) busy=\(sample.isBusy)")
+    }
+} else if CommandLine.arguments.count >= 2, CommandLine.arguments[1] == "--report-config" {
     print(OneFPSRecorder.reportAutomationConfigurationJSON())
 } else if CommandLine.arguments.count >= 2, CommandLine.arguments[1] == "--report-candidates" {
     let formatter = DateFormatter()

@@ -69,10 +69,16 @@ ensure_command codesign
 ensure_ffmpeg
 swift build -c release
 
-if find "$HOME/Movies/1FPS録画" -maxdepth 3 -type d -name '.frames-*' 2>/dev/null | grep -q .; then
-  echo "録画中の一時フレームがあります。録画停止後にもう一度インストールしてください。"
-  echo "保存中にアプリを入れ替えないよう、ここで止めています。"
+if find "$HOME/Movies/1FPS録画" -maxdepth 3 -path '*/.frames-*/*' -type f -mmin -2 2>/dev/null | grep -q .; then
+  echo "直近2分以内に更新された録画中の一時フレームがあります。録画停止後にもう一度インストールしてください。"
+  echo "保存中にアプリを入れ替えないよう、ここで止めています。古い一時フレームは起動時に自動復旧します。"
   exit 2
+fi
+
+if [[ -d "$INSTALLED_APP" ]]; then
+  pkill -f "$INSTALLED_APP/Contents/MacOS/$APP_NAME" 2>/dev/null || true
+  sleep 1
+  chmod -R u+w "$INSTALLED_APP" 2>/dev/null || true
 fi
 
 rm -rf "$APP_DIR"
@@ -178,7 +184,6 @@ cat > "$AGENT_PLIST" <<PLIST
 </dict>
 </plist>
 PLIST
-pkill -f "$INSTALLED_APP/Contents/MacOS/$APP_NAME" 2>/dev/null || true
 launchctl bootout "gui/$(id -u)" "$AGENT_PLIST" 2>/dev/null || true
 launchctl bootstrap "gui/$(id -u)" "$AGENT_PLIST"
 launchctl kickstart -k "gui/$(id -u)/local.codex.OneFPSRecorder"
