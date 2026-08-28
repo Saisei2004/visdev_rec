@@ -7,6 +7,12 @@ enum RecorderSettings {
     private static let recordingNameKey = "recordingName"
     private static let showOverlayKey = "showRecordingOverlay"
     private static let showPauseOverlayKey = "showPauseOverlay"
+    private static let showMenuBarIconKey = "showMenuBarIcon"
+    private static let showMenuBarTimeKey = "showMenuBarTime"
+    private static let showMenuBarScoreKey = "showMenuBarScore"
+    private static let legacyShowMenuBarStatusKey = "showMenuBarStatus"
+    private static let initialSetupCompletedKey = "initialSetupCompleted.v1"
+    private static let showReportMenuKey = "showReportMenu"
     private static let showMonthlyScoreKey = "showMonthlyScore"
     private static let hourlyRateKey = "hourlyRate"
     private static let monthlyGoalKey = "monthlyGoal"
@@ -14,9 +20,52 @@ enum RecorderSettings {
     private static let glowWhenGoalReachedKey = "glowWhenGoalReached"
     private static let pauseOnSleepKey = "pauseOnSleep"
     private static let pauseOnMouseIdleKey = "pauseOnMouseIdle"
+    private static let autoResumeOnMouseMoveKey = "autoResumeOnMouseMove"
     private static let mouseIdleMinutesKey = "mouseIdleMinutes"
+    private static let agentLinkedRecordingKey = "agentLinkedRecording"
+    private static let agentStopSoundKey = "agentStopSound"
+    private static let agentIdleStopSecondsKey = "agentIdleStopSeconds"
+    private static let agentWatchCodexKey = "agentWatchCodex"
+    private static let agentWatchClaudeKey = "agentWatchClaude"
+    private static let captureDisplayIDKey = "captureDisplayID"
+    private static let popupPresetKey = "popupPreset"
+    private static let popupWidthKey = "popupWidth"
+    private static let popupShowTitleKey = "popupShowTitle"
+    private static let popupShowMessageKey = "popupShowMessage"
+    private static let popupShowCaptureTargetKey = "popupShowCaptureTarget"
+    private static let popupShowSettingsButtonKey = "popupShowSettingsButton"
+    private static let popupShowControlButtonKey = "popupShowControlButton"
+    private static let popupShowReportButtonKey = "popupShowReportButton"
+    private static let popupShowTasksButtonKey = "popupShowTasksButton"
+    private static let popupIdleTextKey = "popupIdleText"
+    private static let popupRecordingTextKey = "popupRecordingText"
+    private static let popupSettingsTextKey = "popupSettingsText"
+    private static let popupReportTextKey = "popupReportText"
+    private static let popupTasksTextKey = "popupTasksText"
+    private static let popupStartTextKey = "popupStartText"
+    private static let popupStopTextKey = "popupStopText"
+    private static let slackWorkspaceKey = "slackWorkspace"
+    private static let slackDailyChannelKey = "slackDailyChannel"
+    private static let slackReporterNameKey = "slackReporterName"
+    private static let slackDailyThreadTimestampKey = "slackDailyThreadTimestamp"
+    private static let gmailNottaQueryKey = "gmailNottaQuery"
+    private static let taskLedgerPathKey = "taskLedgerPath"
+    private static let taskHubURLKey = "taskHubURL"
+    private static let githubIssueRepositoriesKey = "githubIssueRepositories"
+    private static let extraReportReferencesKey = "extraReportReferences"
     private static let startMessageIndexKey = "startMessageIndex"
     private static let stopMessageIndexKey = "stopMessageIndex"
+    private static let reporterNameKey = "reporterName"
+    private static let driveFolderURLKey = "driveFolderURL"
+    private static let videoDriveFolderURLKey = "videoDriveFolderURL"
+    private static let defaultWorkPlanKey = "defaultWorkPlan"
+    private static let defaultWorkContentKey = "defaultWorkContent"
+    private static let defaultNextTaskKey = "defaultNextTask"
+    private static let defaultReportStatusKey = "defaultReportStatus"
+    private static let defaultReportMessageKey = "defaultReportMessage"
+    private static let reportTemplatePathKey = "reportTemplatePath"
+    private static let defaultDriveFolderURL = ""
+    private static let defaultVideoDriveFolderURL = ""
 
     static var recordingName: String {
         get {
@@ -53,6 +102,55 @@ enum RecorderSettings {
         set {
             defaults.set(newValue, forKey: showPauseOverlayKey)
         }
+    }
+
+    static var showMenuBarIcon: Bool {
+        get {
+            defaults.synchronize()
+            if defaults.object(forKey: showMenuBarIconKey) == nil {
+                return true
+            }
+            return defaults.bool(forKey: showMenuBarIconKey)
+        }
+        set { defaults.set(newValue, forKey: showMenuBarIconKey) }
+    }
+
+    static var showMenuBarTime: Bool {
+        get {
+            defaults.synchronize()
+            if defaults.object(forKey: showMenuBarTimeKey) != nil {
+                return defaults.bool(forKey: showMenuBarTimeKey)
+            }
+            return defaults.bool(forKey: legacyShowMenuBarStatusKey)
+        }
+        set { defaults.set(newValue, forKey: showMenuBarTimeKey) }
+    }
+
+    static var showMenuBarScore: Bool {
+        get {
+            defaults.synchronize()
+            if defaults.object(forKey: showMenuBarScoreKey) != nil {
+                return defaults.bool(forKey: showMenuBarScoreKey)
+            }
+            return defaults.bool(forKey: legacyShowMenuBarStatusKey)
+        }
+        set { defaults.set(newValue, forKey: showMenuBarScoreKey) }
+    }
+
+    static var showReportMenu: Bool {
+        get {
+            defaults.synchronize()
+            return defaults.bool(forKey: showReportMenuKey)
+        }
+        set { defaults.set(newValue, forKey: showReportMenuKey) }
+    }
+
+    static var initialSetupCompleted: Bool {
+        get {
+            defaults.synchronize()
+            return defaults.bool(forKey: initialSetupCompletedKey)
+        }
+        set { defaults.set(newValue, forKey: initialSetupCompletedKey) }
     }
 
     static var showMonthlyScore: Bool {
@@ -114,7 +212,7 @@ enum RecorderSettings {
         get {
             defaults.synchronize()
             if defaults.object(forKey: pauseOnSleepKey) == nil {
-                return true
+                return false
             }
             return defaults.bool(forKey: pauseOnSleepKey)
         }
@@ -129,6 +227,14 @@ enum RecorderSettings {
         set { defaults.set(newValue, forKey: pauseOnMouseIdleKey) }
     }
 
+    static var autoResumeOnMouseMove: Bool {
+        get {
+            defaults.synchronize()
+            return defaults.bool(forKey: autoResumeOnMouseMoveKey)
+        }
+        set { defaults.set(newValue, forKey: autoResumeOnMouseMoveKey) }
+    }
+
     static var mouseIdleMinutes: Int {
         get {
             defaults.synchronize()
@@ -138,12 +244,216 @@ enum RecorderSettings {
         set { defaults.set(min(max(1, newValue), 180), forKey: mouseIdleMinutesKey) }
     }
 
+    static var agentLinkedRecording: Bool {
+        get {
+            defaults.synchronize()
+            return defaults.bool(forKey: agentLinkedRecordingKey)
+        }
+        set { defaults.set(newValue, forKey: agentLinkedRecordingKey) }
+    }
+
+    static var agentStopSound: Bool {
+        get {
+            defaults.synchronize()
+            return defaults.bool(forKey: agentStopSoundKey)
+        }
+        set { defaults.set(newValue, forKey: agentStopSoundKey) }
+    }
+
+    static var agentIdleStopSeconds: Int {
+        get {
+            defaults.synchronize()
+            let value = defaults.integer(forKey: agentIdleStopSecondsKey)
+            return value > 0 ? value : 60
+        }
+        set { defaults.set(min(max(10, newValue), 3600), forKey: agentIdleStopSecondsKey) }
+    }
+
+    static var agentWatchCodex: Bool {
+        get {
+            defaults.synchronize()
+            if defaults.object(forKey: agentWatchCodexKey) == nil {
+                return true
+            }
+            return defaults.bool(forKey: agentWatchCodexKey)
+        }
+        set { defaults.set(newValue, forKey: agentWatchCodexKey) }
+    }
+
+    static var agentWatchClaude: Bool {
+        get {
+            defaults.synchronize()
+            if defaults.object(forKey: agentWatchClaudeKey) == nil {
+                return true
+            }
+            return defaults.bool(forKey: agentWatchClaudeKey)
+        }
+        set { defaults.set(newValue, forKey: agentWatchClaudeKey) }
+    }
+
+    /// nil keeps the legacy behavior: capture whichever display contains the mouse.
+    static var captureDisplayID: CGDirectDisplayID? {
+        get {
+            defaults.synchronize()
+            guard let number = defaults.object(forKey: captureDisplayIDKey) as? NSNumber,
+                  number.uint32Value != 0
+            else { return nil }
+            return number.uint32Value
+        }
+        set {
+            if let newValue {
+                defaults.set(NSNumber(value: newValue), forKey: captureDisplayIDKey)
+            } else {
+                defaults.removeObject(forKey: captureDisplayIDKey)
+            }
+            defaults.synchronize()
+        }
+    }
+
+    static var popupPreset: String {
+        get { savedText(forKey: popupPresetKey, fallback: "standard") }
+        set { defaults.set(["standard", "minimal", "custom"].contains(newValue) ? newValue : "standard", forKey: popupPresetKey) }
+    }
+
+    static var popupWidth: CGFloat {
+        get {
+            let value = defaults.double(forKey: popupWidthKey)
+            return value > 0 ? CGFloat(min(max(value, 240), 900)) : 360
+        }
+        set { defaults.set(Double(min(max(newValue, 240), 900)), forKey: popupWidthKey) }
+    }
+
+    static var popupShowTitle: Bool { get { boolSetting(popupShowTitleKey, fallback: true) } set { defaults.set(newValue, forKey: popupShowTitleKey) } }
+    static var popupShowMessage: Bool { get { boolSetting(popupShowMessageKey, fallback: true) } set { defaults.set(newValue, forKey: popupShowMessageKey) } }
+    static var popupShowCaptureTarget: Bool { get { boolSetting(popupShowCaptureTargetKey, fallback: false) } set { defaults.set(newValue, forKey: popupShowCaptureTargetKey) } }
+    static var popupShowSettingsButton: Bool { get { boolSetting(popupShowSettingsButtonKey, fallback: true) } set { defaults.set(newValue, forKey: popupShowSettingsButtonKey) } }
+    static var popupShowControlButton: Bool { get { boolSetting(popupShowControlButtonKey, fallback: true) } set { defaults.set(newValue, forKey: popupShowControlButtonKey) } }
+    static var popupShowReportButton: Bool { get { boolSetting(popupShowReportButtonKey, fallback: false) } set { defaults.set(newValue, forKey: popupShowReportButtonKey) } }
+    static var popupShowTasksButton: Bool { get { boolSetting(popupShowTasksButtonKey, fallback: false) } set { defaults.set(newValue, forKey: popupShowTasksButtonKey) } }
+
+    static var popupIdleText: String { get { savedText(forKey: popupIdleTextKey, fallback: "1FPS 待機中") } set { defaults.set(newValue, forKey: popupIdleTextKey) } }
+    static var popupRecordingText: String { get { savedText(forKey: popupRecordingTextKey, fallback: "録画") } set { defaults.set(newValue, forKey: popupRecordingTextKey) } }
+    static var popupSettingsText: String { get { savedText(forKey: popupSettingsTextKey, fallback: "設定") } set { defaults.set(newValue, forKey: popupSettingsTextKey) } }
+    static var popupReportText: String { get { savedText(forKey: popupReportTextKey, fallback: "日報") } set { defaults.set(newValue, forKey: popupReportTextKey) } }
+    static var popupTasksText: String { get { savedText(forKey: popupTasksTextKey, fallback: "タスク") } set { defaults.set(newValue, forKey: popupTasksTextKey) } }
+    static var popupStartText: String { get { savedText(forKey: popupStartTextKey, fallback: "開始") } set { defaults.set(newValue, forKey: popupStartTextKey) } }
+    static var popupStopText: String { get { savedText(forKey: popupStopTextKey, fallback: "停止") } set { defaults.set(newValue, forKey: popupStopTextKey) } }
+
+    static var slackWorkspace: String { get { savedText(forKey: slackWorkspaceKey, fallback: "Visitas") } set { defaults.set(newValue, forKey: slackWorkspaceKey) } }
+    static var slackDailyChannel: String { get { savedText(forKey: slackDailyChannelKey, fallback: "#日報") } set { defaults.set(newValue, forKey: slackDailyChannelKey) } }
+    static var slackReporterName: String { get { savedText(forKey: slackReporterNameKey, fallback: reporterName) } set { defaults.set(newValue, forKey: slackReporterNameKey) } }
+    static var slackDailyThreadTimestamp: String { get { defaults.string(forKey: slackDailyThreadTimestampKey) ?? "" } set { defaults.set(newValue, forKey: slackDailyThreadTimestampKey) } }
+    static var gmailNottaQuery: String { get { savedText(forKey: gmailNottaQueryKey, fallback: "from:(notta.ai) (Visitas OR Visit-as OR AINS OR devmtg)") } set { defaults.set(newValue, forKey: gmailNottaQueryKey) } }
+    static var taskLedgerPath: String {
+        get {
+            let saved = savedText(
+                forKey: taskLedgerPathKey,
+                fallback: NSString(string: "~/visitas-tasks/tasks.json").expandingTildeInPath
+            )
+            if saved == "/Users/matsudsaisei/Documents/Codex/visitas-task-tracker/tasks.md" {
+                return "/Users/matsudsaisei/visitas-tasks/tasks.json"
+            }
+            return saved
+        }
+        set { defaults.set(newValue, forKey: taskLedgerPathKey) }
+    }
+    static var taskHubURL: String { get { savedText(forKey: taskHubURLKey, fallback: "http://127.0.0.1:7700") } set { defaults.set(newValue, forKey: taskHubURLKey) } }
+    static var githubIssueRepositories: String { get { savedText(forKey: githubIssueRepositoriesKey, fallback: "visit-as/Visitas\nvisit-as/AINS") } set { defaults.set(newValue, forKey: githubIssueRepositoriesKey) } }
+    static var extraReportReferences: String { get { defaults.string(forKey: extraReportReferencesKey) ?? "" } set { defaults.set(newValue, forKey: extraReportReferencesKey) } }
+
+    private static func boolSetting(_ key: String, fallback: Bool) -> Bool {
+        defaults.object(forKey: key) == nil ? fallback : defaults.bool(forKey: key)
+    }
+
     static func nextStartMessageIndex(modulo: Int) -> Int {
         nextIndex(forKey: startMessageIndexKey, modulo: modulo)
     }
 
     static func nextStopMessageIndex(modulo: Int) -> Int {
         nextIndex(forKey: stopMessageIndexKey, modulo: modulo)
+    }
+
+    static var reporterName: String {
+        get {
+            defaults.synchronize()
+            let saved = defaults.string(forKey: reporterNameKey) ?? currentUserDisplayName()
+            let trimmed = saved.trimmingCharacters(in: .whitespacesAndNewlines)
+            return trimmed.isEmpty ? currentUserDisplayName() : trimmed
+        }
+        set { defaults.set(newValue.trimmingCharacters(in: .whitespacesAndNewlines), forKey: reporterNameKey) }
+    }
+
+    static var driveFolderURL: String {
+        get {
+            defaults.synchronize()
+            let saved = defaults.string(forKey: driveFolderURLKey) ?? defaultDriveFolderURL
+            return saved.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? defaultDriveFolderURL : saved
+        }
+        set { defaults.set(newValue.trimmingCharacters(in: .whitespacesAndNewlines), forKey: driveFolderURLKey) }
+    }
+
+    static var videoDriveFolderURL: String {
+        get {
+            defaults.synchronize()
+            let saved = defaults.string(forKey: videoDriveFolderURLKey) ?? defaultVideoDriveFolderURL
+            return saved.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? defaultVideoDriveFolderURL : saved
+        }
+        set { defaults.set(newValue.trimmingCharacters(in: .whitespacesAndNewlines), forKey: videoDriveFolderURLKey) }
+    }
+
+    static var defaultWorkPlan: String {
+        get { savedText(forKey: defaultWorkPlanKey, fallback: "Visitasの開発") }
+        set { defaults.set(newValue.trimmingCharacters(in: .whitespacesAndNewlines), forKey: defaultWorkPlanKey) }
+    }
+
+    static var defaultWorkContent: String {
+        get { savedText(forKey: defaultWorkContentKey, fallback: "") }
+        set { defaults.set(newValue.trimmingCharacters(in: .whitespacesAndNewlines), forKey: defaultWorkContentKey) }
+    }
+
+    static var defaultNextTask: String {
+        get { savedText(forKey: defaultNextTaskKey, fallback: "") }
+        set { defaults.set(newValue.trimmingCharacters(in: .whitespacesAndNewlines), forKey: defaultNextTaskKey) }
+    }
+
+    static var defaultReportStatus: String {
+        get { savedText(forKey: defaultReportStatusKey, fallback: "順調") }
+        set { defaults.set(newValue.trimmingCharacters(in: .whitespacesAndNewlines), forKey: defaultReportStatusKey) }
+    }
+
+    static var defaultReportMessage: String {
+        get { savedText(forKey: defaultReportMessageKey, fallback: "") }
+        set { defaults.set(newValue.trimmingCharacters(in: .whitespacesAndNewlines), forKey: defaultReportMessageKey) }
+    }
+
+    static var reportTemplatePath: String {
+        get {
+            defaults.synchronize()
+            let fallback = FileManager.default.homeDirectoryForCurrentUser
+                .appendingPathComponent("Downloads")
+                .appendingPathComponent("報告書（6月分）.docx")
+                .path
+            let saved = defaults.string(forKey: reportTemplatePathKey) ?? fallback
+            let trimmed = saved.trimmingCharacters(in: .whitespacesAndNewlines)
+            return trimmed.isEmpty ? fallback : trimmed
+        }
+        set { defaults.set(newValue.trimmingCharacters(in: .whitespacesAndNewlines), forKey: reportTemplatePathKey) }
+    }
+
+    private static func savedText(forKey key: String, fallback: String) -> String {
+        defaults.synchronize()
+        let saved = defaults.string(forKey: key) ?? fallback
+        let trimmed = saved.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? fallback : trimmed
+    }
+
+    private static func currentUserDisplayName() -> String {
+        let fullName = NSFullUserName().trimmingCharacters(in: .whitespacesAndNewlines)
+        if !fullName.isEmpty {
+            return fullName
+        }
+        let loginName = NSUserName().trimmingCharacters(in: .whitespacesAndNewlines)
+        return loginName.isEmpty ? "担当者" : loginName
     }
 
     private static func nextIndex(forKey key: String, modulo: Int) -> Int {
@@ -164,34 +474,287 @@ enum RecorderSettings {
     }
 }
 
+struct ReportSubmissionForm {
+    var date: Date
+    var reporter: String
+    var workPlan: String
+    var workContent: String
+    var nextTask: String
+    var status: String
+    var message: String
+    var videoLink: String
+    var driveFolderURL: String
+    var videoDriveFolderURL: String
+}
+
+struct ReportSubmissionResult {
+    var reportURL: URL
+    var submittedVideoURL: URL
+    var minutes: Int
+}
+
+struct ReportSubmissionDestinations: Codable {
+    var uploadVideoToDrive: Bool
+    var updateDriveReport: Bool
+    var postToSlack: Bool
+
+    init(uploadVideoToDrive: Bool = true, updateDriveReport: Bool = true, postToSlack: Bool = false) {
+        self.uploadVideoToDrive = uploadVideoToDrive
+        self.updateDriveReport = updateDriveReport
+        self.postToSlack = postToSlack
+    }
+}
+
+struct StoredReportEntry: Codable {
+    var date: String
+    var displayDate: String
+    var reporter: String
+    var hours: Int
+    var minutes: Int?
+    var workPlan: String
+    var workContent: String
+    var videoLink: String
+    var videoFileName: String
+    var nextTask: String
+    var status: String
+    var message: String
+}
+
+struct AgentActivitySample {
+    let matchedProcessCount: Int
+    let busyCPUSeconds: Double
+    let busyAgentCount: Int
+    let isBusy: Bool
+}
+
+/// Codex / Claude のCLIプロセス（とその子プロセス）のCPU時間を定期サンプリングし、
+/// エージェントが実際に処理中かどうかを判定する。
+final class AgentActivityMonitor {
+    static let sampleInterval: TimeInterval = 5.0
+    /// 1サンプル間隔あたり、1エージェント（ルートプロセス+子プロセス）のCPU時間が
+    /// この秒数以上なら「処理中」とみなす。アイドルで開いたままのセッションにも
+    /// 微小なCPU（実測 約0.1s/10s）が常時あるため、その揺らぎより高くしてある
+    private static let busyCPUThresholdPerAgent: Double = 0.15
+    /// ChatGPTアプリが裏で常時動かすCodex Chronicle（画面要約）は作業とみなさない
+    private static let excludedArgumentMarkers = ["chronicle", "memgen"]
+
+    private struct ProcessRecord {
+        let pid: Int32
+        let ppid: Int32
+        let cpuSeconds: Double
+        let executablePath: String
+    }
+
+    private var previousCPUTimes: [Int32: Double] = [:]
+    private var hasBaseline = false
+
+    func reset() {
+        previousCPUTimes.removeAll()
+        hasBaseline = false
+    }
+
+    func sample() -> AgentActivitySample {
+        let records = Self.listProcesses()
+        let trees = Self.agentProcessTrees(in: records)
+        guard !trees.isEmpty else {
+            previousCPUTimes.removeAll()
+            hasBaseline = true
+            return AgentActivitySample(matchedProcessCount: 0, busyCPUSeconds: 0, busyAgentCount: 0, isBusy: false)
+        }
+
+        var recordsByPID: [Int32: ProcessRecord] = [:]
+        for record in records {
+            recordsByPID[record.pid] = record
+        }
+        var currentTimes: [Int32: Double] = [:]
+        var totalDelta: Double = 0
+        var busyAgentCount = 0
+        for tree in trees {
+            var treeDelta: Double = 0
+            for pid in tree {
+                guard let record = recordsByPID[pid] else { continue }
+                let delta = max(0, record.cpuSeconds - (previousCPUTimes[pid] ?? 0))
+                treeDelta += delta
+                if currentTimes[pid] == nil {
+                    totalDelta += delta
+                    currentTimes[pid] = record.cpuSeconds
+                }
+            }
+            if treeDelta >= Self.busyCPUThresholdPerAgent {
+                busyAgentCount += 1
+            }
+        }
+        let baselineReady = hasBaseline
+        previousCPUTimes = currentTimes
+        hasBaseline = true
+        guard baselineReady else {
+            return AgentActivitySample(matchedProcessCount: currentTimes.count, busyCPUSeconds: 0, busyAgentCount: 0, isBusy: false)
+        }
+        return AgentActivitySample(
+            matchedProcessCount: currentTimes.count,
+            busyCPUSeconds: totalDelta,
+            busyAgentCount: busyAgentCount,
+            isBusy: busyAgentCount > 0
+        )
+    }
+
+    private static func listProcesses() -> [ProcessRecord] {
+        guard let output = runPS(arguments: ["-axo", "pid=,ppid=,time=,comm="]) else { return [] }
+        var records: [ProcessRecord] = []
+        for line in output.split(separator: "\n") {
+            let parts = line.split(separator: " ", maxSplits: 3, omittingEmptySubsequences: true)
+            guard parts.count == 4,
+                  let pid = Int32(parts[0]),
+                  let ppid = Int32(parts[1]) else { continue }
+            records.append(ProcessRecord(
+                pid: pid,
+                ppid: ppid,
+                cpuSeconds: cpuSeconds(from: String(parts[2])),
+                executablePath: String(parts[3])
+            ))
+        }
+        return records
+    }
+
+    /// 監視対象のCLI実行ファイル名。ローカルプロセスだけが対象なので、
+    /// クラウド側で実行されるタスクは検知されない。
+    private static func watchedExecutableNames() -> Set<String> {
+        var names = Set<String>()
+        if RecorderSettings.agentWatchCodex { names.insert("codex") }
+        if RecorderSettings.agentWatchClaude { names.insert("claude") }
+        return names
+    }
+
+    /// エージェント（ルートプロセス）ごとに、そのプロセスと子孫プロセスのPID一覧を返す
+    private static func agentProcessTrees(in records: [ProcessRecord]) -> [[Int32]] {
+        let watched = watchedExecutableNames()
+        guard !watched.isEmpty else { return [] }
+        var rootPIDs: [Int32] = []
+        var codexCandidates: [Int32] = []
+        for record in records {
+            let name = (record.executablePath as NSString).lastPathComponent
+            guard watched.contains(name) else { continue }
+            if name == "codex" {
+                codexCandidates.append(record.pid)
+            } else {
+                rootPIDs.append(record.pid)
+            }
+        }
+        rootPIDs.append(contentsOf: filterExcludedCodexProcesses(codexCandidates))
+        guard !rootPIDs.isEmpty else { return [] }
+
+        var childrenByParent: [Int32: [Int32]] = [:]
+        for record in records {
+            childrenByParent[record.ppid, default: []].append(record.pid)
+        }
+        var trees: [[Int32]] = []
+        for root in rootPIDs {
+            var members: [Int32] = []
+            var visited = Set<Int32>()
+            var queue = [root]
+            while let pid = queue.popLast() {
+                guard visited.insert(pid).inserted else { continue }
+                members.append(pid)
+                queue.append(contentsOf: childrenByParent[pid] ?? [])
+            }
+            trees.append(members)
+        }
+        return trees
+    }
+
+    private static func filterExcludedCodexProcesses(_ pids: [Int32]) -> [Int32] {
+        guard !pids.isEmpty else { return [] }
+        let pidList = pids.map(String.init).joined(separator: ",")
+        guard let output = runPS(arguments: ["-ww", "-p", pidList, "-o", "pid=,args="]) else { return pids }
+        var excluded = Set<Int32>()
+        for line in output.split(separator: "\n") {
+            let parts = line.split(separator: " ", maxSplits: 1, omittingEmptySubsequences: true)
+            guard parts.count == 2, let pid = Int32(parts[0]) else { continue }
+            let args = parts[1].lowercased()
+            if excludedArgumentMarkers.contains(where: { args.contains($0) }) {
+                excluded.insert(pid)
+            }
+        }
+        return pids.filter { !excluded.contains($0) }
+    }
+
+    private static func runPS(arguments: [String]) -> String? {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/bin/ps")
+        process.arguments = arguments
+        let pipe = Pipe()
+        process.standardOutput = pipe
+        process.standardError = FileHandle.nullDevice
+        do {
+            try process.run()
+        } catch {
+            return nil
+        }
+        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        process.waitUntilExit()
+        return String(data: data, encoding: .utf8)
+    }
+
+    /// psのtime表記（"1:02.34" や "12:03:04" など）を秒に変換する
+    private static func cpuSeconds(from timeField: String) -> Double {
+        var seconds: Double = 0
+        var multiplier: Double = 1
+        for component in timeField.split(separator: ":").reversed() {
+            seconds += (Double(component) ?? 0) * multiplier
+            multiplier *= 60
+        }
+        return seconds
+    }
+}
+
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private static let appSupportDirectory = FileManager.default.homeDirectoryForCurrentUser
         .appendingPathComponent("Library", isDirectory: true)
         .appendingPathComponent("Application Support", isDirectory: true)
         .appendingPathComponent("OneFPSRecorder", isDirectory: true)
     private static let commandFile = appSupportDirectory.appendingPathComponent("command.txt")
+    private static let permissionStatusFile = appSupportDirectory.appendingPathComponent("permission-status.txt")
     private let logFile = FileManager.default.homeDirectoryForCurrentUser
         .appendingPathComponent("Library", isDirectory: true)
         .appendingPathComponent("Logs", isDirectory: true)
         .appendingPathComponent("1FPS録画.log")
-    private var statusItem: NSStatusItem!
+    private var statusItem: NSStatusItem?
+    private var reportMenuItem: NSMenuItem?
+    private var pauseStopMenuItem: NSMenuItem?
     private var overlay: RecordingOverlay!
     private var recorder: OneFPSRecorder!
     private var lastToggleAt = Date.distantPast
     private var commandTimer: DispatchSourceTimer?
     private var lastCommandLine = ""
+    private let appStartedAt = Date()
     private var lockFileHandle: FileHandle?
     private var settingsWindowController: SettingsWindowController?
+    private var reportWindowController: ReportSubmissionWindowController?
+    private var batchReportWindowController: DailyReportBatchWindowController?
+    private var taskWindowController: VisitasTaskWindowController?
     private var overlayMessage = ""
+    private var manualReadyOverlayVisible = false
+    private var wasRecordingDisplayState = false
     private var activityTimer: DispatchSourceTimer?
     private var lastMouseLocation: CGPoint?
     private var lastMouseMovedAt = Date()
     private var autoPausedBySleep = false
     private var autoPausedByMouseIdle = false
+    private let agentMonitor = AgentActivityMonitor()
+    private var agentMonitorTimer: DispatchSourceTimer?
+    private let agentSampleQueue = DispatchQueue(label: "local.codex.OneFPSRecorder.agent-monitor", qos: .utility)
+    private var agentActive = false
+    private var agentBusyStreak = 0
+    private var agentLastBusyAt = Date.distantPast
+    private var agentModeMenuItem: NSMenuItem?
+    private var agentStopSoundPlayer: NSSound?
+    private let launchedInBackground = CommandLine.arguments.contains("--background")
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
+        installStandardEditMenu()
         guard acquireSingleInstanceLock() else {
+            Self.sendCommand("settings")
             NSApp.terminate(nil)
             return
         }
@@ -203,7 +766,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         })
         OneFPSRecorder.migrateRecordingsDirectory()
-        OneFPSRecorder.recoverOrphanedFrameDirectories()
+        let recoveryReport = OneFPSRecorder.recoverInterruptedRecordingState()
         OneFPSRecorder.migrateSavedTextFileNames()
         OneFPSRecorder.migrateToDailyDirectories()
         OneFPSRecorder.renameExistingRecordings(from: "", to: RecorderSettings.recordingName)
@@ -211,19 +774,50 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         OneFPSRecorder.reconcileDailyVideosWithLogs()
         OneFPSRecorder.syncAllDerivedLogs()
 
-        setupStatusItem()
+        refreshStatusItemVisibility()
         overlay = RecordingOverlay(
+            startAction: { [weak self] in
+                self?.startRecordingFromOverlay()
+            },
             stopAction: { [weak self] in
                 self?.stopRecordingFromOverlay()
             },
             resumeAction: { [weak self] in
                 self?.resumeRecordingFromPauseOverlay()
+            },
+            stopPausedAction: { [weak self] in
+                self?.stopAutomaticPauseFromOverlay()
+            },
+            settingsAction: { [weak self] in
+                self?.openSettings()
+            },
+            reportAction: { [weak self] in
+                self?.openBatchReportSubmission()
+            },
+            tasksAction: { [weak self] in
+                self?.openVisitasTasks()
             }
         )
         setupCommandNotifications()
         setupAutomaticPauseHandling()
+        setupAgentActivityMonitoring()
         applyStatus(.idle)
         log("OneFPSRecorder launched")
+        if recoveryReport.hasEvents {
+            log(recoveryReport.logSummary)
+            DispatchQueue.main.async { [weak self] in
+                self?.showAlert(recoveryReport.userMessage)
+            }
+        }
+        if !RecorderSettings.initialSetupCompleted {
+            DispatchQueue.main.async { [weak self] in
+                self?.openSettingsWindow(initialSetup: true)
+            }
+        } else if !launchedInBackground {
+            DispatchQueue.main.async { [weak self] in
+                self?.openSettings()
+            }
+        }
     }
 
     func applicationWillTerminate(_ notification: Notification) {
@@ -232,6 +826,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         commandTimer?.cancel()
         activityTimer?.cancel()
+        agentMonitorTimer?.cancel()
         NSWorkspace.shared.notificationCenter.removeObserver(self)
         if let lockFileHandle {
             flock(lockFileHandle.fileDescriptor, LOCK_UN)
@@ -239,47 +834,163 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        openSettings()
+        return true
+    }
+
+    private func installStandardEditMenu() {
+        let mainMenu = NSMenu()
+        let appItem = NSMenuItem()
+        mainMenu.addItem(appItem)
+        let appMenu = NSMenu()
+        appMenu.addItem(withTitle: "終了", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+        appItem.submenu = appMenu
+
+        let editItem = NSMenuItem()
+        mainMenu.addItem(editItem)
+        let editMenu = NSMenu(title: "編集")
+        editMenu.addItem(withTitle: "取り消す", action: Selector(("undo:")), keyEquivalent: "z")
+        editMenu.addItem(withTitle: "やり直す", action: Selector(("redo:")), keyEquivalent: "Z")
+        editMenu.addItem(.separator())
+        editMenu.addItem(withTitle: "カット", action: #selector(NSText.cut(_:)), keyEquivalent: "x")
+        editMenu.addItem(withTitle: "コピー", action: #selector(NSText.copy(_:)), keyEquivalent: "c")
+        editMenu.addItem(withTitle: "ペースト", action: #selector(NSText.paste(_:)), keyEquivalent: "v")
+        editMenu.addItem(withTitle: "すべて選択", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
+        editItem.submenu = editMenu
+
+        NSApp.mainMenu = mainMenu
+    }
+
+    private func refreshStatusItemVisibility() {
+        if RecorderSettings.showMenuBarIcon {
+            if statusItem == nil {
+                setupStatusItem()
+            }
+        } else if let statusItem {
+            NSStatusBar.system.removeStatusItem(statusItem)
+            self.statusItem = nil
+            reportMenuItem = nil
+            pauseStopMenuItem = nil
+            agentModeMenuItem = nil
+        }
+    }
+
     private func setupStatusItem() {
-        statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+        let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         let menu = NSMenu()
         let toggleItem = NSMenuItem(title: "録画開始", action: #selector(toggleRecording), keyEquivalent: "")
         toggleItem.target = self
         menu.addItem(toggleItem)
 
+        let pauseStopItem = NSMenuItem(title: "一時停止を終了", action: #selector(stopAutomaticPauseFromMenu), keyEquivalent: "")
+        pauseStopItem.target = self
+        pauseStopItem.isHidden = true
+        pauseStopMenuItem = pauseStopItem
+        menu.addItem(pauseStopItem)
+
         let folderItem = NSMenuItem(title: "保存フォルダを開く", action: #selector(openFolder), keyEquivalent: "")
         folderItem.target = self
         menu.addItem(folderItem)
+
+        let captureTargetItem = NSMenuItem(title: "録画する画面", action: nil, keyEquivalent: "")
+        captureTargetItem.submenu = makeCaptureTargetMenu()
+        menu.addItem(captureTargetItem)
+
+        let agentModeItem = NSMenuItem(title: "Codex/Claude連動録画", action: #selector(toggleAgentLinkedRecording), keyEquivalent: "")
+        agentModeItem.target = self
+        agentModeItem.state = RecorderSettings.agentLinkedRecording ? .on : .off
+        agentModeMenuItem = agentModeItem
+        menu.addItem(agentModeItem)
+
+        let reportItem = NSMenuItem(title: "1日分の業務報告を提出...", action: #selector(openReportSubmission), keyEquivalent: "")
+        reportItem.target = self
+        reportItem.isHidden = !RecorderSettings.showReportMenu
+        reportMenuItem = reportItem
+        menu.addItem(reportItem)
+
+        let batchReportItem = NSMenuItem(title: "今月の未提出日をまとめて...", action: #selector(openBatchReportSubmission), keyEquivalent: "")
+        batchReportItem.target = self
+        menu.addItem(batchReportItem)
+
+        let tasksItem = NSMenuItem(title: "Visitasタスク...", action: #selector(openVisitasTasks), keyEquivalent: "")
+        tasksItem.target = self
+        menu.addItem(tasksItem)
 
         let settingsItem = NSMenuItem(title: "設定...", action: #selector(openSettings), keyEquivalent: "")
         settingsItem.target = self
         menu.addItem(settingsItem)
 
+        item.menu = menu
+        statusItem = item
+    }
+
+    private func makeCaptureTargetMenu() -> NSMenu {
+        let menu = NSMenu()
+        let followItem = NSMenuItem(title: "マウスのある画面を追従", action: #selector(selectCaptureTarget(_:)), keyEquivalent: "")
+        followItem.target = self
+        followItem.representedObject = NSNumber(value: UInt32(0))
+        followItem.state = RecorderSettings.captureDisplayID == nil ? .on : .off
+        menu.addItem(followItem)
         menu.addItem(.separator())
-        let quitItem = NSMenuItem(title: "終了", action: #selector(quit), keyEquivalent: "q")
-        quitItem.target = self
-        menu.addItem(quitItem)
-        statusItem.menu = menu
+
+        for target in CaptureDisplayTarget.availableDisplays() {
+            let item = NSMenuItem(title: "固定: \(target.name)", action: #selector(selectCaptureTarget(_:)), keyEquivalent: "")
+            item.target = self
+            item.representedObject = NSNumber(value: target.id)
+            item.state = RecorderSettings.captureDisplayID == target.id ? .on : .off
+            menu.addItem(item)
+        }
+        return menu
+    }
+
+    @objc private func selectCaptureTarget(_ sender: NSMenuItem) {
+        let selectedID = (sender.representedObject as? NSNumber)?.uint32Value ?? 0
+        RecorderSettings.captureDisplayID = selectedID == 0 ? nil : selectedID
+        refreshCaptureTargetMenus()
+    }
+
+    private func refreshCaptureTargetMenus() {
+        if let menu = statusItem?.menu,
+           let item = menu.items.first(where: { $0.title == "録画する画面" }) {
+            item.submenu = makeCaptureTargetMenu()
+        }
+        overlay.refreshCaptureTargets()
     }
 
     private func applyStatus(_ state: RecorderState) {
-        guard let button = statusItem.button else { return }
-        button.attributedTitle = NSAttributedString(string: "")
+        refreshStatusItemVisibility()
+        statusItem?.button?.attributedTitle = NSAttributedString(string: "")
+        refreshMenuVisibility()
         switch state {
         case .idle:
-            button.title = isAutomaticallyPaused ? "1FPS 一時停止" : "1FPS"
-            button.contentTintColor = nil
-            statusItem.menu?.item(at: 0)?.title = "録画開始"
-            statusItem.menu?.item(at: 0)?.isEnabled = true
+            wasRecordingDisplayState = false
+            setMenuBarDisplay(
+                title: isAutomaticallyPaused ? "一時停止" : "1FPS",
+                symbolName: isAutomaticallyPaused ? "pause.circle.fill" : "record.circle",
+                tint: isAutomaticallyPaused ? .systemYellow : nil
+            )
+            statusItem?.menu?.item(at: 0)?.title = isAutomaticallyPaused ? "録画再開" : "録画開始"
+            statusItem?.menu?.item(at: 0)?.isEnabled = true
+            pauseStopMenuItem?.isHidden = !isAutomaticallyPaused
+            pauseStopMenuItem?.isEnabled = isAutomaticallyPaused
             if isAutomaticallyPaused, RecorderSettings.showPauseOverlay {
                 overlay.showPaused(message: automaticPauseMessage)
+            } else if (manualReadyOverlayVisible || !RecorderSettings.showMenuBarIcon), RecorderSettings.showOverlay {
+                overlay.showReady(message: "ここから録画できます")
             } else {
                 overlay.hide()
             }
         case .idleSaving:
-            button.title = "1FPS 保存中"
-            button.contentTintColor = nil
-            statusItem.menu?.item(at: 0)?.title = "録画開始"
-            statusItem.menu?.item(at: 0)?.isEnabled = true
+            wasRecordingDisplayState = false
+            setMenuBarDisplay(
+                title: "保存中",
+                symbolName: "tray.and.arrow.down.fill",
+                tint: .systemOrange
+            )
+            statusItem?.menu?.item(at: 0)?.title = "録画開始"
+            statusItem?.menu?.item(at: 0)?.isEnabled = true
+            pauseStopMenuItem?.isHidden = true
             if isAutomaticallyPaused, RecorderSettings.showPauseOverlay {
                 overlay.showSaving(message: "一時停止を保存中")
             } else if RecorderSettings.showOverlay {
@@ -290,11 +1001,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         case .recording(let startedAt):
             let elapsed = Int(Date().timeIntervalSince(startedAt))
             let score = OneFPSRecorder.monthlyScore(includingCurrentStartedAt: startedAt)
-            let scoreText = RecorderSettings.showMonthlyScore ? " \(Self.currency(score.earnedYen))" : ""
-            button.title = String(format: "録画中 1FPS %02d:%02d%@", elapsed / 60, elapsed % 60, scoreText)
-            button.contentTintColor = nil
-            statusItem.menu?.item(at: 0)?.title = "録画停止"
-            statusItem.menu?.item(at: 0)?.isEnabled = true
+            let titleParts = menuBarRecordingTitleParts(elapsed: elapsed, scoreYen: score.earnedYen)
+            let shouldRevealRecordingPanel = !wasRecordingDisplayState
+            wasRecordingDisplayState = true
+            setMenuBarDisplay(
+                title: titleParts.isEmpty ? "録画中" : titleParts.joined(separator: " "),
+                symbolName: "record.circle.fill",
+                tint: .systemRed
+            )
+            statusItem?.menu?.item(at: 0)?.title = "録画停止"
+            statusItem?.menu?.item(at: 0)?.isEnabled = true
+            pauseStopMenuItem?.isHidden = true
             if RecorderSettings.showOverlay {
                 overlay.showRecording(
                     elapsedSeconds: elapsed,
@@ -303,16 +1020,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     glow: RecorderSettings.showMonthlyScore
                         && RecorderSettings.glowWhenGoalReached
                         && RecorderSettings.monthlyGoal > 0
-                        && score.earnedYen >= RecorderSettings.monthlyGoal
+                        && score.earnedYen >= RecorderSettings.monthlyGoal,
+                    revealOnMainDisplay: shouldRevealRecordingPanel
                 )
             } else {
                 overlay.hide()
             }
         case .encoding:
-            button.title = "1FPS 保存中"
-            button.contentTintColor = nil
-            statusItem.menu?.item(at: 0)?.title = "保存中..."
-            statusItem.menu?.item(at: 0)?.isEnabled = false
+            wasRecordingDisplayState = false
+            setMenuBarDisplay(
+                title: "保存中",
+                symbolName: "tray.and.arrow.down.fill",
+                tint: .systemOrange
+            )
+            statusItem?.menu?.item(at: 0)?.title = "保存中..."
+            statusItem?.menu?.item(at: 0)?.isEnabled = false
+            pauseStopMenuItem?.isHidden = true
             if isAutomaticallyPaused, RecorderSettings.showPauseOverlay {
                 overlay.showSaving(message: "一時停止を保存中")
             } else if RecorderSettings.showOverlay {
@@ -321,13 +1044,68 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 overlay.hide()
             }
         case .error(let message):
-            button.title = "1FPS エラー"
-            button.contentTintColor = nil
-            statusItem.menu?.item(at: 0)?.title = "録画開始"
-            statusItem.menu?.item(at: 0)?.isEnabled = true
+            wasRecordingDisplayState = false
+            setMenuBarDisplay(title: "エラー", symbolName: "exclamationmark.circle.fill", tint: .systemRed)
+            statusItem?.menu?.item(at: 0)?.title = "録画開始"
+            statusItem?.menu?.item(at: 0)?.isEnabled = true
+            pauseStopMenuItem?.isHidden = true
             overlay.hide()
             showAlert(message)
         }
+    }
+
+    private func refreshMenuVisibility() {
+        reportMenuItem?.isHidden = !RecorderSettings.showReportMenu
+        agentModeMenuItem?.state = RecorderSettings.agentLinkedRecording ? .on : .off
+    }
+
+    private func setMenuBarDisplay(title: String, symbolName: String, tint: NSColor?) {
+        guard let statusItem, let button = statusItem.button else { return }
+        let showsText = title.contains(":") || title.contains("¥")
+        statusItem.length = showsText ? NSStatusItem.variableLength : NSStatusItem.squareLength
+        if !showsText {
+            button.title = ""
+            button.imagePosition = .imageOnly
+            if let symbol = adaptiveMenuBarSymbol(symbolName: symbolName, accessibilityDescription: title) {
+                button.image = symbol
+            } else {
+                button.image = nil
+                button.title = "●"
+            }
+            button.contentTintColor = nil
+            button.toolTip = title
+        } else {
+            if let symbol = adaptiveMenuBarSymbol(symbolName: symbolName, accessibilityDescription: title) {
+                button.image = symbol
+            } else {
+                button.image = nil
+            }
+            button.imagePosition = .imageLeading
+            button.title = title
+            button.contentTintColor = nil
+            button.toolTip = title
+        }
+    }
+
+    private func menuBarRecordingTitleParts(elapsed: Int, scoreYen: Int) -> [String] {
+        var parts: [String] = []
+        if RecorderSettings.showMenuBarTime {
+            parts.append(String(format: "%02d:%02d", elapsed / 60, elapsed % 60))
+        }
+        if RecorderSettings.showMenuBarScore {
+            parts.append(Self.currency(scoreYen))
+        }
+        return parts
+    }
+
+    private func adaptiveMenuBarSymbol(symbolName: String, accessibilityDescription: String) -> NSImage? {
+        let configuration = NSImage.SymbolConfiguration(pointSize: 16, weight: .semibold)
+        guard let symbol = NSImage(systemSymbolName: symbolName, accessibilityDescription: accessibilityDescription)?
+            .withSymbolConfiguration(configuration) else {
+            return nil
+        }
+        symbol.isTemplate = true
+        return symbol
     }
 
     private static func currency(_ amount: Int) -> String {
@@ -346,6 +1124,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         lastToggleAt = now
         log("Toggle recording requested")
+        manualReadyOverlayVisible = false
         if recorder.isRecording {
             autoPausedBySleep = false
             autoPausedByMouseIdle = false
@@ -370,11 +1149,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func stopRecordingFromOverlay() {
         guard recorder.isRecording else { return }
+        manualReadyOverlayVisible = false
         autoPausedBySleep = false
         autoPausedByMouseIdle = false
         log("Overlay stop requested")
         overlayMessage = Self.stopMessage()
         recorder.stop()
+    }
+
+    private func startRecordingFromOverlay() {
+        guard !recorder.isRecording else { return }
+        manualReadyOverlayVisible = false
+        autoPausedBySleep = false
+        autoPausedByMouseIdle = false
+        log("Overlay start requested")
+        overlayMessage = Self.startMessage()
+        Task {
+            do {
+                try await recorder.start()
+            } catch {
+                log("Overlay start failed: \(error.localizedDescription)")
+                await MainActor.run {
+                    applyStatus(.error(error.localizedDescription))
+                }
+            }
+        }
     }
 
     private func resumeRecordingFromPauseOverlay() {
@@ -384,6 +1183,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         autoPausedByMouseIdle = false
         overlayMessage = Self.startMessage()
         startRecordingAfterAutomaticPause()
+    }
+
+    private func stopAutomaticPauseFromOverlay() {
+        guard isAutomaticallyPaused else { return }
+        log("Pause overlay stop requested")
+        manualReadyOverlayVisible = false
+        autoPausedBySleep = false
+        autoPausedByMouseIdle = false
+        overlayMessage = Self.stopMessage()
+        if recorder.isRecording {
+            recorder.stop()
+        } else {
+            applyStatus(recorder.isEncoding ? .idleSaving : .idle)
+        }
     }
 
     private var isAutomaticallyPaused: Bool {
@@ -410,6 +1223,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         case "stop":
             if recorder.isRecording {
                 toggleRecording()
+            } else if isAutomaticallyPaused {
+                stopAutomaticPauseFromOverlay()
             }
         case "flush":
             if recorder.isRecording {
@@ -417,11 +1232,47 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         case "settings":
             openSettings()
+        case "report":
+            openReportSubmission()
+        case "batchReport":
+            openBatchReportSubmission()
+        case "tasks":
+            openVisitasTasks()
+        case "quit":
+            quit()
+        case "showOverlay":
+            RecorderSettings.showOverlay = true
+            if isAutomaticallyPaused, RecorderSettings.showPauseOverlay {
+                manualReadyOverlayVisible = false
+                overlay.showPaused(message: automaticPauseMessage)
+                overlay.revealOnMainDisplay()
+            } else if recorder.isRecording, let startedAt = recorder.currentStartedAt {
+                manualReadyOverlayVisible = false
+                applyStatus(.recording(startedAt))
+                overlay.revealOnMainDisplay()
+            } else {
+                manualReadyOverlayVisible = true
+                overlay.showReady(message: "ここから録画できます")
+                overlay.revealOnMainDisplay()
+            }
+        case "refreshSettings":
+            refreshCaptureTargetMenus()
+            if recorder.isRecording, let startedAt = recorder.currentStartedAt {
+                applyStatus(.recording(startedAt))
+            } else {
+                applyStatus(recorder.isEncoding ? .idleSaving : .idle)
+            }
         case "toggle":
             toggleRecording()
+        case "checkPermissions":
+            checkPermissionsForSettings()
         default:
             break
         }
+    }
+
+    @objc private func stopAutomaticPauseFromMenu() {
+        stopAutomaticPauseFromOverlay()
     }
 
     private func setupAutomaticPauseHandling() {
@@ -471,12 +1322,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
            hypot(currentLocation.x - lastMouseLocation.x, currentLocation.y - lastMouseLocation.y) >= 2 {
             lastMouseMovedAt = Date()
             if autoPausedByMouseIdle {
-                applyStatus(.idle)
+                if RecorderSettings.autoResumeOnMouseMove {
+                    log("Mouse moved while automatically paused; resuming")
+                    resumeRecordingFromPauseOverlay()
+                } else {
+                    applyStatus(.idle)
+                }
             }
             return
         }
 
         guard RecorderSettings.pauseOnMouseIdle, recorder.isRecording else { return }
+        // エージェント連動中は、Codex/Claudeが処理中なら無操作でも作業中とみなす
+        if RecorderSettings.agentLinkedRecording, agentActive { return }
         let idleSeconds = Date().timeIntervalSince(lastMouseMovedAt)
         guard idleSeconds >= TimeInterval(RecorderSettings.mouseIdleMinutes * 60) else { return }
         log("Auto pause after mouse idle: \(Int(idleSeconds))s")
@@ -503,11 +1361,190 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    private func setupAgentActivityMonitoring() {
+        let timer = DispatchSource.makeTimerSource(queue: agentSampleQueue)
+        timer.schedule(
+            deadline: .now() + AgentActivityMonitor.sampleInterval,
+            repeating: AgentActivityMonitor.sampleInterval,
+            leeway: .seconds(1)
+        )
+        timer.setEventHandler { [weak self] in
+            guard let self else { return }
+            guard RecorderSettings.agentLinkedRecording else {
+                self.agentMonitor.reset()
+                DispatchQueue.main.async {
+                    self.agentActive = false
+                    self.agentBusyStreak = 0
+                }
+                return
+            }
+            let sample = self.agentMonitor.sample()
+            DispatchQueue.main.async {
+                self.applyAgentActivitySample(sample)
+            }
+        }
+        agentMonitorTimer = timer
+        timer.resume()
+    }
+
+    private func applyAgentActivitySample(_ sample: AgentActivitySample) {
+        guard RecorderSettings.agentLinkedRecording else { return }
+        let now = Date()
+        if sample.isBusy {
+            agentBusyStreak += 1
+            agentLastBusyAt = now
+            // 1回だけのCPU揺らぎで誤開始しないよう、2回連続で検知したら開始
+            if !agentActive, agentBusyStreak >= 2 {
+                agentActive = true
+                agentDidBecomeActive()
+            }
+        } else {
+            agentBusyStreak = 0
+            if agentActive, now.timeIntervalSince(agentLastBusyAt) >= TimeInterval(RecorderSettings.agentIdleStopSeconds) {
+                agentActive = false
+                agentDidBecomeIdle()
+            }
+        }
+    }
+
+    private func agentDidBecomeActive() {
+        log("Agent activity detected (Codex/Claude); auto start")
+        guard !recorder.isRecording else { return }
+        manualReadyOverlayVisible = false
+        autoPausedBySleep = false
+        autoPausedByMouseIdle = false
+        overlayMessage = "Codex/Claudeの動作を検知して録画中"
+        Task {
+            do {
+                try await recorder.start()
+            } catch {
+                log("Agent auto start failed: \(error.localizedDescription)")
+                await MainActor.run {
+                    applyStatus(.error(error.localizedDescription))
+                }
+            }
+        }
+    }
+
+    private func agentDidBecomeIdle() {
+        log("Agent idle for \(RecorderSettings.agentIdleStopSeconds)s; auto stop")
+        if recorder.isRecording {
+            overlayMessage = "Codex/Claudeの停止を検知して録画停止"
+            recorder.stop()
+        }
+        if RecorderSettings.agentStopSound {
+            playAgentStopSound()
+        }
+    }
+
+    private func playAgentStopSound() {
+        let sound = NSSound(named: "Glass")
+        agentStopSoundPlayer = sound
+        sound?.play()
+    }
+
+    @objc private func toggleAgentLinkedRecording() {
+        let enabled = !RecorderSettings.agentLinkedRecording
+        RecorderSettings.agentLinkedRecording = enabled
+        if !enabled {
+            agentActive = false
+            agentBusyStreak = 0
+        }
+        agentModeMenuItem?.state = enabled ? .on : .off
+        log("Agent linked recording \(enabled ? "enabled" : "disabled") from menu")
+    }
+
     @objc private func openFolder() {
         NSWorkspace.shared.open(OneFPSRecorder.recordingsDirectory)
     }
 
+    @objc private func openReportSubmission() {
+        log("Report submission requested")
+        if recorder.isRecording {
+            recorder.flushCurrentSegment()
+        }
+        reportWindowController = ReportSubmissionWindowController { [weak self] form in
+            RecorderSettings.reporterName = form.reporter
+            RecorderSettings.driveFolderURL = form.driveFolderURL
+            RecorderSettings.defaultWorkPlan = form.workPlan
+            RecorderSettings.defaultWorkContent = form.workContent
+            RecorderSettings.defaultNextTask = form.nextTask
+            RecorderSettings.defaultReportStatus = form.status
+            RecorderSettings.defaultReportMessage = form.message
+            do {
+                let result = try OneFPSRecorder.submitReport(form)
+                self?.showAlert("業務報告を更新しました。\n業務時間: \(OneFPSRecorder.reportMinutesText(result.minutes))\n\n報告: \(result.reportURL.path)\n提出動画: \(result.submittedVideoURL.path)")
+                if let driveURL = URL(string: form.driveFolderURL), !form.driveFolderURL.isEmpty {
+                    NSWorkspace.shared.open(driveURL)
+                } else {
+                    NSWorkspace.shared.open(result.submittedVideoURL.deletingLastPathComponent())
+                }
+                self?.bringReportWindowToFront()
+            } catch {
+                self?.showAlert(error.localizedDescription)
+            }
+        }
+        NSApp.setActivationPolicy(.regular)
+        NSApp.activate(ignoringOtherApps: true)
+        reportWindowController?.showWindow(nil)
+    }
+
+    @objc private func openBatchReportSubmission() {
+        log("Batch report submission requested")
+        if recorder.isRecording {
+            recorder.flushCurrentSegment()
+        }
+        let dates = OneFPSRecorder.unsubmittedReportDates()
+        guard !dates.isEmpty else {
+            showAlert("今月は、動画があり未提出になっている日がありません。")
+            return
+        }
+        batchReportWindowController = DailyReportBatchWindowController(dates: dates) { [weak self] forms, destinations in
+            DispatchQueue.global(qos: .userInitiated).async {
+                var completed: [String] = []
+                var failures: [String] = []
+                let formatter = DateFormatter()
+                formatter.dateFormat = "yyyy-MM-dd"
+                for form in forms {
+                    do {
+                        _ = try OneFPSRecorder.submitReport(form, destinations: destinations)
+                        completed.append(formatter.string(from: form.date))
+                    } catch {
+                        failures.append("\(formatter.string(from: form.date)): \(error.localizedDescription)")
+                    }
+                }
+                DispatchQueue.main.async {
+                    var message = "\(completed.count)日分の処理が完了しました。"
+                    if !failures.isEmpty {
+                        message += "\n\n未完了:\n" + failures.joined(separator: "\n")
+                    }
+                    self?.showAlert(message)
+                }
+            }
+        }
+        NSApp.setActivationPolicy(.regular)
+        batchReportWindowController?.showWindow(nil)
+    }
+
+    @objc private func openVisitasTasks() {
+        if taskWindowController == nil {
+            taskWindowController = VisitasTaskWindowController()
+        }
+        taskWindowController?.showWindow(nil)
+    }
+
+    private func bringReportWindowToFront() {
+        NSApp.setActivationPolicy(.regular)
+        NSApp.activate(ignoringOtherApps: true)
+        reportWindowController?.window?.makeKeyAndOrderFront(nil)
+        reportWindowController?.window?.orderFrontRegardless()
+    }
+
     @objc private func openSettings() {
+        openSettingsWindow(initialSetup: false)
+    }
+
+    private func openSettingsWindow(initialSetup: Bool) {
         log("Settings requested")
         let helperURL = Bundle.main.bundleURL
             .appendingPathComponent("Contents", isDirectory: true)
@@ -515,6 +1552,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             .appendingPathComponent("OneFPSRecorderSettings")
         let process = Process()
         process.executableURL = helperURL
+        process.arguments = initialSetup ? ["--setup"] : []
         do {
             try process.run()
         } catch {
@@ -534,9 +1572,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         alert.runModal()
     }
 
+    private func checkPermissionsForSettings() {
+        let ok = OneFPSRecorder.hasScreenCaptureAccess(requestIfNeeded: true)
+        let status = ok ? "ok" : "ng"
+        try? FileManager.default.createDirectory(at: Self.appSupportDirectory, withIntermediateDirectories: true)
+        try? "\(Date().timeIntervalSince1970) \(status)\n".write(to: Self.permissionStatusFile, atomically: true, encoding: .utf8)
+        log("Permission check result: \(status)")
+    }
+
     private func setupCommandNotifications() {
         try? FileManager.default.createDirectory(at: Self.appSupportDirectory, withIntermediateDirectories: true)
-        lastCommandLine = currentCommandLine() ?? ""
+        lastCommandLine = ""
         let timer = DispatchSource.makeTimerSource(queue: .main)
         timer.schedule(deadline: .now() + 0.5, repeating: 0.5, leeway: .milliseconds(100))
         timer.setEventHandler { [weak self] in
@@ -556,6 +1602,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         lastCommandLine = line
         let parts = line.split(separator: " ", maxSplits: 1).map(String.init)
         guard parts.count == 2 else { return }
+        guard let timestamp = TimeInterval(parts[0]) else { return }
+        if timestamp < appStartedAt.addingTimeInterval(-30).timeIntervalSince1970 {
+            return
+        }
         handleCommand(parts[1])
     }
 
@@ -715,6 +1765,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return false
     }
 
+    private static func sendCommand(_ command: String) {
+        try? FileManager.default.createDirectory(at: appSupportDirectory, withIntermediateDirectories: true)
+        let commandFile = appSupportDirectory.appendingPathComponent("command.txt")
+        let line = "\(Date().timeIntervalSince1970) \(command)\n"
+        if FileManager.default.fileExists(atPath: commandFile.path),
+           let handle = try? FileHandle(forWritingTo: commandFile) {
+            _ = try? handle.seekToEnd()
+            try? handle.write(contentsOf: Data(line.utf8))
+            try? handle.close()
+        } else {
+            try? Data(line.utf8).write(to: commandFile)
+        }
+    }
+
 }
 
 enum RecorderState {
@@ -723,6 +1787,155 @@ enum RecorderState {
     case recording(Date)
     case encoding
     case error(String)
+}
+
+final class ReportSubmissionWindowController: NSWindowController, NSWindowDelegate {
+    private let dateField = NSTextField(string: ReportSubmissionWindowController.defaultDateText())
+    private let reporterField = NSTextField(string: RecorderSettings.reporterName)
+    private let workPlanField = NSTextField(string: RecorderSettings.defaultWorkPlan)
+    private let workContentField = NSTextField(string: RecorderSettings.defaultWorkContent)
+    private let nextTaskField = NSTextField(string: RecorderSettings.defaultNextTask)
+    private let statusField = NSTextField(string: RecorderSettings.defaultReportStatus)
+    private let messageField = NSTextField(string: RecorderSettings.defaultReportMessage)
+    private let videoLinkField = NSTextField(string: "")
+    private let onSubmit: (ReportSubmissionForm) -> Void
+
+    init(onSubmit: @escaping (ReportSubmissionForm) -> Void) {
+        self.onSubmit = onSubmit
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 620, height: 430),
+            styleMask: [.titled, .closable],
+            backing: .buffered,
+            defer: false
+        )
+        window.title = "業務報告を提出"
+        window.level = .floating
+        window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+        window.hidesOnDeactivate = false
+        window.center()
+        window.isReleasedWhenClosed = false
+        super.init(window: window)
+        window.delegate = self
+        buildUI()
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    override func showWindow(_ sender: Any?) {
+        dateField.stringValue = Self.defaultDateText()
+        reporterField.stringValue = RecorderSettings.reporterName
+        workPlanField.stringValue = RecorderSettings.defaultWorkPlan
+        workContentField.stringValue = RecorderSettings.defaultWorkContent
+        nextTaskField.stringValue = RecorderSettings.defaultNextTask
+        statusField.stringValue = RecorderSettings.defaultReportStatus
+        messageField.stringValue = RecorderSettings.defaultReportMessage
+        super.showWindow(sender)
+        window?.center()
+        NSApp.setActivationPolicy(.regular)
+        NSApp.activate(ignoringOtherApps: true)
+        window?.makeKeyAndOrderFront(nil)
+        window?.orderFrontRegardless()
+    }
+
+    private func buildUI() {
+        guard let contentView = window?.contentView else { return }
+        let fields: [(String, NSTextField, String)] = [
+            ("日付", dateField, "yyyy-MM-dd"),
+            ("担当者", reporterField, ""),
+            ("業務プラン", workPlanField, ""),
+            ("✅ やった", workContentField, ""),
+            ("業務動画リンク", videoLinkField, "Drive共有リンクを取得できたら貼る"),
+            ("➡️ 明日", nextTaskField, ""),
+            ("業務は順調ですか？", statusField, ""),
+            ("🚧 詰まった / 判断待ち", messageField, "無ければ「なし」")
+        ]
+
+        var y = 360
+        for (label, field, placeholder) in fields {
+            let labelView = NSTextField(labelWithString: label)
+            labelView.font = NSFont.systemFont(ofSize: 12, weight: .semibold)
+            labelView.frame = NSRect(x: 28, y: y + 6, width: 130, height: 20)
+            field.frame = NSRect(x: 166, y: y, width: 420, height: 28)
+            field.placeholderString = placeholder
+            contentView.addSubview(labelView)
+            contentView.addSubview(field)
+            y -= 36
+        }
+
+        let destination = NSTextField(labelWithString: "提出先: 設定したDriveフォルダ。未設定の場合はローカル保存のみ")
+        destination.font = NSFont.systemFont(ofSize: 11, weight: .semibold)
+        destination.textColor = .secondaryLabelColor
+        destination.frame = NSRect(x: 28, y: 78, width: 560, height: 18)
+        contentView.addSubview(destination)
+
+        let hint = NSTextField(labelWithString: "業務時間は録画区間ログから切り捨て分単位で入ります。日付を変えると過去日の上書きになります。")
+        hint.font = NSFont.systemFont(ofSize: 11)
+        hint.textColor = .secondaryLabelColor
+        hint.frame = NSRect(x: 28, y: 46, width: 560, height: 18)
+        contentView.addSubview(hint)
+
+        let cancelButton = NSButton(title: "キャンセル", target: self, action: #selector(cancelPressed))
+        cancelButton.bezelStyle = .rounded
+        cancelButton.frame = NSRect(x: 410, y: 16, width: 82, height: 30)
+        contentView.addSubview(cancelButton)
+
+        let submitButton = NSButton(title: "提出", target: self, action: #selector(submitPressed))
+        submitButton.bezelStyle = .rounded
+        submitButton.keyEquivalent = "\r"
+        submitButton.frame = NSRect(x: 504, y: 16, width: 82, height: 30)
+        contentView.addSubview(submitButton)
+    }
+
+    @objc private func submitPressed() {
+        guard let date = Self.parseDate(dateField.stringValue) else {
+            showInlineAlert("日付は yyyy-MM-dd で入力してください。")
+            return
+        }
+        let form = ReportSubmissionForm(
+            date: date,
+            reporter: reporterField.stringValue,
+            workPlan: workPlanField.stringValue,
+            workContent: workContentField.stringValue,
+            nextTask: nextTaskField.stringValue,
+            status: statusField.stringValue,
+            message: messageField.stringValue,
+            videoLink: videoLinkField.stringValue,
+            driveFolderURL: RecorderSettings.driveFolderURL,
+            videoDriveFolderURL: RecorderSettings.videoDriveFolderURL
+        )
+        onSubmit(form)
+        close()
+    }
+
+    @objc private func cancelPressed() {
+        close()
+    }
+
+    func windowWillClose(_ notification: Notification) {
+        NSApp.setActivationPolicy(.accessory)
+    }
+
+    private func showInlineAlert(_ message: String) {
+        let alert = NSAlert()
+        alert.messageText = "業務報告"
+        alert.informativeText = message
+        alert.alertStyle = .warning
+        alert.runModal()
+    }
+
+    private static func defaultDateText() -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd"
+        return formatter.string(from: Date())
+    }
+
+    private static func parseDate(_ text: String) -> Date? {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd"
+        return formatter.date(from: text.trimmingCharacters(in: .whitespacesAndNewlines))
+    }
 }
 
 final class SettingsWindowController: NSWindowController, NSWindowDelegate {
@@ -829,29 +2042,53 @@ final class RecordingOverlay {
     private static let originXKey = "recordingOverlayOriginX"
     private static let originYKey = "recordingOverlayOriginY"
     private let panel: NSPanel
-    private let root = DraggableVisualEffectView(frame: NSRect(x: 0, y: 0, width: 336, height: 76))
+    private let root = DraggableVisualEffectView(frame: NSRect(x: 0, y: 0, width: 360, height: 92))
     private let titleLabel = DraggableLabel(labelWithString: "録画 00:00")
     private let scoreLabel = DraggableLabel(labelWithString: "")
     private let messageLabel = DraggableLabel(labelWithString: "")
     private let statusDot = DraggableDotView(frame: NSRect(x: 0, y: 0, width: 9, height: 9))
     private let stopButton = NSButton(title: "停止", target: nil, action: nil)
+    private let secondaryStopButton = NSButton(title: "停止", target: nil, action: nil)
+    private let captureTargetPopup = NSPopUpButton(frame: .zero, pullsDown: false)
+    private let settingsButton = NSButton(title: "設定", target: nil, action: nil)
+    private let reportButton = NSButton(title: "日報", target: nil, action: nil)
+    private let tasksButton = NSButton(title: "タスク", target: nil, action: nil)
+    private let startAction: () -> Void
     private let stopAction: () -> Void
     private let resumeAction: () -> Void
+    private let stopPausedAction: () -> Void
+    private let settingsAction: () -> Void
+    private let reportAction: () -> Void
+    private let tasksAction: () -> Void
     private var buttonMode: ButtonMode = .stop
     private var glowTimer: Timer?
     private var glowHue: CGFloat = 0
 
     private enum ButtonMode {
+        case start
         case stop
         case resume
     }
 
-    init(stopAction: @escaping () -> Void, resumeAction: @escaping () -> Void) {
+    init(
+        startAction: @escaping () -> Void,
+        stopAction: @escaping () -> Void,
+        resumeAction: @escaping () -> Void,
+        stopPausedAction: @escaping () -> Void,
+        settingsAction: @escaping () -> Void,
+        reportAction: @escaping () -> Void,
+        tasksAction: @escaping () -> Void
+    ) {
+        self.startAction = startAction
         self.stopAction = stopAction
         self.resumeAction = resumeAction
+        self.stopPausedAction = stopPausedAction
+        self.settingsAction = settingsAction
+        self.reportAction = reportAction
+        self.tasksAction = tasksAction
 
         panel = NSPanel(
-            contentRect: NSRect(x: 0, y: 0, width: 336, height: 76),
+            contentRect: NSRect(x: 0, y: 0, width: 360, height: 92),
             styleMask: [.borderless, .nonactivatingPanel],
             backing: .buffered,
             defer: false
@@ -904,28 +2141,86 @@ final class RecordingOverlay {
         stopButton.contentTintColor = .systemRed
         stopButton.setButtonType(.momentaryPushIn)
 
+        secondaryStopButton.target = self
+        secondaryStopButton.action = #selector(secondaryStopPressed)
+        secondaryStopButton.bezelStyle = .rounded
+        secondaryStopButton.font = NSFont.systemFont(ofSize: 11, weight: .semibold)
+        secondaryStopButton.contentTintColor = .systemRed
+        secondaryStopButton.setButtonType(.momentaryPushIn)
+        secondaryStopButton.isHidden = true
+
+        captureTargetPopup.target = self
+        captureTargetPopup.action = #selector(captureTargetChanged)
+        captureTargetPopup.font = NSFont.systemFont(ofSize: 11, weight: .medium)
+
+        settingsButton.target = self
+        settingsButton.action = #selector(settingsPressed)
+        settingsButton.bezelStyle = .rounded
+        settingsButton.font = NSFont.systemFont(ofSize: 11, weight: .medium)
+
+        reportButton.target = self
+        reportButton.action = #selector(reportPressed)
+        reportButton.bezelStyle = .rounded
+        reportButton.font = NSFont.systemFont(ofSize: 11, weight: .medium)
+
+        tasksButton.target = self
+        tasksButton.action = #selector(tasksPressed)
+        tasksButton.bezelStyle = .rounded
+        tasksButton.font = NSFont.systemFont(ofSize: 11, weight: .medium)
+
         root.addSubview(statusDot)
         root.addSubview(titleLabel)
         root.addSubview(scoreLabel)
         root.addSubview(messageLabel)
         root.addSubview(stopButton)
+        root.addSubview(secondaryStopButton)
+        root.addSubview(captureTargetPopup)
+        root.addSubview(settingsButton)
+        root.addSubview(reportButton)
+        root.addSubview(tasksButton)
         panel.contentView = root
-        layoutSubviews()
+        refreshCaptureTargets()
+        applyCustomization()
     }
 
-    func showRecording(elapsedSeconds: Int, message: String, scoreText: String?, glow: Bool) {
-        titleLabel.stringValue = String(format: "録画 %02d:%02d", elapsedSeconds / 60, elapsedSeconds % 60)
+    func showReady(message: String) {
+        titleLabel.stringValue = RecorderSettings.popupIdleText
+        scoreLabel.stringValue = ""
+        scoreLabel.isHidden = true
+        messageLabel.stringValue = message
+        statusDot.layer?.backgroundColor = NSColor.systemBlue.cgColor
+        statusDot.layer?.shadowColor = NSColor.systemBlue.cgColor
+        stopButton.isEnabled = true
+        stopButton.title = RecorderSettings.popupStartText
+        stopButton.contentTintColor = .systemBlue
+        secondaryStopButton.isHidden = true
+        buttonMode = .start
+        setGlowEnabled(false)
+        applyCustomization()
+        show()
+    }
+
+    func showRecording(
+        elapsedSeconds: Int,
+        message: String,
+        scoreText: String?,
+        glow: Bool,
+        revealOnMainDisplay: Bool = false
+    ) {
+        titleLabel.stringValue = String(format: "%@ %02d:%02d", RecorderSettings.popupRecordingText, elapsedSeconds / 60, elapsedSeconds % 60)
         scoreLabel.stringValue = scoreText ?? ""
         scoreLabel.isHidden = scoreText == nil
         messageLabel.stringValue = message
         statusDot.layer?.backgroundColor = NSColor.systemRed.cgColor
         statusDot.layer?.shadowColor = NSColor.systemRed.cgColor
         stopButton.isEnabled = true
-        stopButton.title = "停止"
+        stopButton.title = RecorderSettings.popupStopText
         stopButton.contentTintColor = .systemRed
+        secondaryStopButton.isHidden = true
         buttonMode = .stop
         setGlowEnabled(glow)
-        show()
+        applyCustomization()
+        show(ignoringSavedOrigin: revealOnMainDisplay)
     }
 
     func showSaving(message: String) {
@@ -938,8 +2233,10 @@ final class RecordingOverlay {
         stopButton.isEnabled = false
         stopButton.title = "..."
         stopButton.contentTintColor = .systemOrange
+        secondaryStopButton.isHidden = true
         buttonMode = .stop
         setGlowEnabled(false)
+        applyCustomization()
         show()
     }
 
@@ -953,8 +2250,13 @@ final class RecordingOverlay {
         stopButton.isEnabled = true
         stopButton.title = "再開"
         stopButton.contentTintColor = .systemBlue
+        secondaryStopButton.isHidden = false
+        secondaryStopButton.isEnabled = true
+        secondaryStopButton.title = "停止"
+        secondaryStopButton.contentTintColor = .systemRed
         buttonMode = .resume
         setGlowEnabled(false)
+        applyCustomization()
         show()
     }
 
@@ -964,19 +2266,140 @@ final class RecordingOverlay {
         panel.orderOut(nil)
     }
 
-    private func show() {
-        if !panel.isVisible {
+    private func show(ignoringSavedOrigin: Bool = false) {
+        if ignoringSavedOrigin {
+            positionOnMainDisplay(ignoringSavedOrigin: true)
+            NSApp.activate(ignoringOtherApps: true)
+            panel.makeKeyAndOrderFront(nil)
+        } else if !panel.isVisible {
             positionOnMainDisplay()
         }
         panel.orderFrontRegardless()
     }
 
-    private func layoutSubviews() {
-        statusDot.frame = NSRect(x: 16, y: 49, width: 9, height: 9)
-        titleLabel.frame = NSRect(x: 34, y: 44, width: 118, height: 18)
-        scoreLabel.frame = NSRect(x: 154, y: 44, width: 104, height: 18)
-        messageLabel.frame = NSRect(x: 16, y: 16, width: 248, height: 18)
-        stopButton.frame = NSRect(x: 274, y: 41, width: 48, height: 26)
+    func revealOnMainDisplay() {
+        positionOnMainDisplay(ignoringSavedOrigin: true)
+        NSApp.activate(ignoringOtherApps: true)
+        panel.makeKeyAndOrderFront(nil)
+        panel.orderFrontRegardless()
+    }
+
+    func applyCustomization() {
+        let preset = RecorderSettings.popupPreset
+        let minimal = preset == "minimal"
+        let isCustom = preset == "custom"
+        let showTitle = !minimal && (!isCustom || RecorderSettings.popupShowTitle)
+        let showMessage = !minimal && (!isCustom || RecorderSettings.popupShowMessage)
+        let showCapture = isCustom && RecorderSettings.popupShowCaptureTarget
+        let showSettings = !minimal && (!isCustom || RecorderSettings.popupShowSettingsButton)
+        let showControl = !minimal && (!isCustom || RecorderSettings.popupShowControlButton)
+        let showReport = !minimal && RecorderSettings.popupShowReportButton
+        let showTasks = !minimal && RecorderSettings.popupShowTasksButton
+
+        settingsButton.title = RecorderSettings.popupSettingsText
+        reportButton.title = RecorderSettings.popupReportText
+        tasksButton.title = RecorderSettings.popupTasksText
+        func buttonWidth(_ button: NSButton, minimum: CGFloat = 76) -> CGFloat {
+            let font = button.font ?? NSFont.systemFont(ofSize: 11)
+            let textWidth = (button.title as NSString).size(withAttributes: [.font: font]).width
+            return min(180, max(minimum, ceil(textWidth) + 34))
+        }
+        let settingsWidth = buttonWidth(settingsButton)
+        let reportWidth = buttonWidth(reportButton)
+        let tasksWidth = buttonWidth(tasksButton)
+        let controlWidth = buttonWidth(stopButton, minimum: 58)
+
+        var bottomControlsWidth: CGFloat = 0
+        if showCapture { bottomControlsWidth += 178 }
+        if showSettings { bottomControlsWidth += settingsWidth }
+        if showReport { bottomControlsWidth += reportWidth }
+        if showTasks { bottomControlsWidth += tasksWidth }
+        let requestedWidth: CGFloat = minimal ? 44 : (isCustom ? RecorderSettings.popupWidth : 360)
+        let width = minimal ? requestedWidth : max(requestedWidth, bottomControlsWidth + (showMessage ? 140 : 30))
+        let height: CGFloat = minimal ? 34 : 92
+        panel.setContentSize(NSSize(width: width, height: height))
+        root.frame = NSRect(x: 0, y: 0, width: width, height: height)
+        if panel.isVisible, let visibleFrame = (panel.screen ?? NSScreen.main)?.visibleFrame {
+            var origin = panel.frame.origin
+            origin.x = min(max(origin.x, visibleFrame.minX), max(visibleFrame.minX, visibleFrame.maxX - width))
+            origin.y = min(max(origin.y, visibleFrame.minY), max(visibleFrame.minY, visibleFrame.maxY - height))
+            panel.setFrameOrigin(origin)
+        }
+
+        titleLabel.isHidden = !showTitle
+        scoreLabel.isHidden = !showTitle || scoreLabel.stringValue.isEmpty
+        messageLabel.isHidden = !showMessage
+        captureTargetPopup.isHidden = !showCapture
+        settingsButton.isHidden = !showSettings
+        reportButton.isHidden = !showReport
+        tasksButton.isHidden = !showTasks
+        stopButton.isHidden = !showControl
+        secondaryStopButton.isHidden = !(buttonMode == .resume && showControl)
+
+        if minimal {
+            statusDot.frame = NSRect(x: 17.5, y: 12.5, width: 9, height: 9)
+            return
+        }
+
+        statusDot.frame = NSRect(x: 16, y: 65, width: 9, height: 9)
+        titleLabel.frame = NSRect(x: 34, y: 60, width: max(118, width - 250), height: 18)
+        scoreLabel.frame = NSRect(x: max(154, width - 366), y: 60, width: 104, height: 18)
+        var topRight = width - 16
+        if showControl {
+            stopButton.frame = NSRect(x: topRight - controlWidth, y: 57, width: controlWidth, height: 26)
+            topRight -= controlWidth + 10
+            secondaryStopButton.frame = NSRect(x: topRight - 58, y: 57, width: 58, height: 26)
+        }
+
+        var x = width - 16
+        func place(_ view: NSView, width controlWidth: CGFloat, shown: Bool) {
+            guard shown else { return }
+            x -= controlWidth
+            view.frame = NSRect(x: x, y: 14, width: controlWidth - 6, height: 28)
+        }
+        place(tasksButton, width: tasksWidth, shown: showTasks)
+        place(reportButton, width: reportWidth, shown: showReport)
+        place(settingsButton, width: settingsWidth, shown: showSettings)
+        place(captureTargetPopup, width: 178, shown: showCapture)
+        messageLabel.frame = NSRect(x: 16, y: 20, width: max(40, x - 26), height: 18)
+    }
+
+    func refreshCaptureTargets() {
+        captureTargetPopup.removeAllItems()
+        captureTargetPopup.addItem(withTitle: "追従: マウスの画面")
+        captureTargetPopup.lastItem?.representedObject = NSNumber(value: UInt32(0))
+        for target in CaptureDisplayTarget.availableDisplays() {
+            captureTargetPopup.addItem(withTitle: "固定: \(target.name)")
+            captureTargetPopup.lastItem?.representedObject = NSNumber(value: target.id)
+        }
+        let selectedID = RecorderSettings.captureDisplayID ?? 0
+        if let matching = captureTargetPopup.itemArray.first(where: {
+            ($0.representedObject as? NSNumber)?.uint32Value == selectedID
+        }) {
+            captureTargetPopup.select(matching)
+        } else {
+            captureTargetPopup.selectItem(at: 0)
+        }
+    }
+
+    @objc private func captureTargetChanged() {
+        let selectedID = (captureTargetPopup.selectedItem?.representedObject as? NSNumber)?.uint32Value ?? 0
+        RecorderSettings.captureDisplayID = selectedID == 0 ? nil : selectedID
+    }
+
+    @objc private func settingsPressed() {
+        saveCurrentOrigin()
+        settingsAction()
+    }
+
+    @objc private func reportPressed() {
+        saveCurrentOrigin()
+        reportAction()
+    }
+
+    @objc private func tasksPressed() {
+        saveCurrentOrigin()
+        tasksAction()
     }
 
     private func setGlowEnabled(_ enabled: Bool) {
@@ -1003,8 +2426,8 @@ final class RecordingOverlay {
         statusDot.layer?.shadowColor = color.cgColor
     }
 
-    private func positionOnMainDisplay() {
-        if let savedOrigin = savedOriginInsideAnyScreen() {
+    private func positionOnMainDisplay(ignoringSavedOrigin: Bool = false) {
+        if !ignoringSavedOrigin, let savedOrigin = savedOriginInsideAnyScreen() {
             panel.setFrameOrigin(savedOrigin)
             return
         }
@@ -1049,11 +2472,18 @@ final class RecordingOverlay {
     @objc private func stopPressed() {
         saveCurrentOrigin()
         switch buttonMode {
+        case .start:
+            startAction()
         case .stop:
             stopAction()
         case .resume:
             resumeAction()
         }
+    }
+
+    @objc private func secondaryStopPressed() {
+        saveCurrentOrigin()
+        stopPausedAction()
     }
 }
 
@@ -1069,6 +2499,20 @@ final class DraggableDotView: NSView {
     override var mouseDownCanMoveWindow: Bool { true }
 }
 
+struct CaptureDisplayTarget {
+    let id: CGDirectDisplayID
+    let name: String
+
+    static func availableDisplays() -> [CaptureDisplayTarget] {
+        NSScreen.screens.compactMap { screen in
+            guard let number = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber else {
+                return nil
+            }
+            return CaptureDisplayTarget(id: number.uint32Value, name: screen.localizedName)
+        }
+    }
+}
+
 final class OneFPSRecorder: NSObject {
     private static let maxSegmentFrames = 900
     static let recordingsDirectory = FileManager.default.homeDirectoryForCurrentUser
@@ -1077,6 +2521,8 @@ final class OneFPSRecorder: NSObject {
     private static let legacyRecordingsDirectory = FileManager.default.homeDirectoryForCurrentUser
         .appendingPathComponent("Movies", isDirectory: true)
         .appendingPathComponent("OneFPSRecordings", isDirectory: true)
+    private static var ffmpegURL: URL { bundledExecutable("ffmpeg") }
+    private static var ffprobeURL: URL { bundledExecutable("ffprobe") }
 
     private let status: (RecorderState) -> Void
     private var startedAt: Date?
@@ -1096,6 +2542,7 @@ final class OneFPSRecorder: NSObject {
     private var encodingJobCount = 0
 
     var isRecording: Bool { startedAt != nil }
+    var currentStartedAt: Date? { startedAt }
 
     private struct PendingSegment {
         let frameDirectory: URL
@@ -1115,6 +2562,53 @@ final class OneFPSRecorder: NSObject {
         var frameCount: Int?
     }
 
+    struct RecoveryReport {
+        var restoredDailyBackups = 0
+        var removedInterruptedDailyFiles = 0
+        var recoveredSegments = 0
+        var removedEmptyFrameDirectories = 0
+        var failedFrameDirectories: [String] = []
+
+        var hasEvents: Bool {
+            restoredDailyBackups > 0
+                || removedInterruptedDailyFiles > 0
+                || recoveredSegments > 0
+                || removedEmptyFrameDirectories > 0
+                || !failedFrameDirectories.isEmpty
+        }
+
+        var logSummary: String {
+            "Recovery restoredDailyBackups=\(restoredDailyBackups) removedInterruptedDailyFiles=\(removedInterruptedDailyFiles) recoveredSegments=\(recoveredSegments) removedEmptyFrameDirectories=\(removedEmptyFrameDirectories) failedFrameDirectories=\(failedFrameDirectories.count)"
+        }
+
+        var userMessage: String {
+            var lines: [String] = []
+            if recoveredSegments > 0 {
+                lines.append("保存途中だった録画を \(recoveredSegments) 件、自動復旧しました。")
+            }
+            if restoredDailyBackups > 0 || removedInterruptedDailyFiles > 0 {
+                lines.append("保存途中に残った一時ファイルを整理しました。")
+            }
+            if removedEmptyFrameDirectories > 0 {
+                lines.append("映像が入っていない一時フォルダを \(removedEmptyFrameDirectories) 件整理しました。")
+            }
+            if !failedFrameDirectories.isEmpty {
+                lines.append("まだ復旧できていない録画が \(failedFrameDirectories.count) 件あります。次回起動時にも自動で再試行します。")
+                lines.append("場所: \(failedFrameDirectories.prefix(3).joined(separator: "\n"))")
+            }
+            return lines.joined(separator: "\n")
+        }
+    }
+
+    private static func bundledExecutable(_ name: String) -> URL {
+        if let resourceURL = Bundle.main.resourceURL?.appendingPathComponent(name),
+           FileManager.default.isExecutableFile(atPath: resourceURL.path) {
+            return resourceURL
+        }
+        return FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".local/bin/\(name)")
+    }
+
     init(status: @escaping (RecorderState) -> Void) {
         self.status = status
         super.init()
@@ -1122,6 +2616,7 @@ final class OneFPSRecorder: NSObject {
 
     func start() async throws {
         guard !isRecording else { return }
+        try Self.ensureScreenCaptureAccess()
         try FileManager.default.createDirectory(at: Self.recordingsDirectory, withIntermediateDirectories: true)
 
         let now = Date()
@@ -1133,6 +2628,54 @@ final class OneFPSRecorder: NSObject {
         status(.recording(startedAt ?? Date()))
         startDisplayTimer()
         startCaptureTimer()
+    }
+
+    private static func ensureScreenCaptureAccess() throws {
+        if hasScreenCaptureAccess(requestIfNeeded: true) {
+            return
+        }
+        throw NSError(
+            domain: "OneFPSRecorder",
+            code: 10,
+            userInfo: [
+                NSLocalizedDescriptionKey: "画面収録の許可が必要です。システム設定 > プライバシーとセキュリティ > 画面とシステムオーディオ収録 で OneFPSRecorder を許可してから、もう一度録画開始してください。"
+            ]
+        )
+    }
+
+    static func hasScreenCaptureAccess(requestIfNeeded: Bool) -> Bool {
+        if CGPreflightScreenCaptureAccess() {
+            return true
+        }
+        if canCaptureTestFrame() {
+            return true
+        }
+        if requestIfNeeded {
+            _ = CGRequestScreenCaptureAccess()
+        }
+        return CGPreflightScreenCaptureAccess() || canCaptureTestFrame()
+    }
+
+    private static func canCaptureTestFrame() -> Bool {
+        let testURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("onefps-permission-\(UUID().uuidString).jpg")
+        defer { try? FileManager.default.removeItem(at: testURL) }
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")
+        process.arguments = ["-x", "-t", "jpg", testURL.path]
+        process.standardOutput = Pipe()
+        process.standardError = Pipe()
+        do {
+            try process.run()
+            process.waitUntilExit()
+            let fileSize = (try? FileManager.default.attributesOfItem(atPath: testURL.path)[.size] as? NSNumber)?
+                .intValue ?? 0
+            return process.terminationStatus == 0
+                && FileManager.default.fileExists(atPath: testURL.path)
+                && fileSize > 0
+        } catch {
+            return false
+        }
     }
 
     func stop() {
@@ -1300,7 +2843,7 @@ final class OneFPSRecorder: NSObject {
         let capturedAt = Date()
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")
-        if let captureRectangle = Self.displayBoundsContainingMouse() {
+        if let captureRectangle = Self.captureDisplayBounds() {
             process.arguments = [
                 "-x",
                 "-t", "jpg",
@@ -1362,9 +2905,11 @@ final class OneFPSRecorder: NSObject {
         encodingJobCount = max(0, encodingJobCount - 1)
         isEncoding = encodingJobCount > 0
         if let errorMessage {
-            stopDisplayTimer()
-            cleanupAll()
-            status(.error(errorMessage))
+            if isRecording {
+                status(.recording(startedAt ?? Date()))
+            } else {
+                status(.error("\(errorMessage)\n一時フレームは残しています。次回起動時に自動復旧を再試行します。"))
+            }
             return
         }
         if isRecording {
@@ -1408,28 +2953,17 @@ final class OneFPSRecorder: NSObject {
             return
         }
 
-        let listURL = frameDirectory.appendingPathComponent("frames.txt")
-        let frameList = Self.frameConcatList(frameNames: frameNames, in: frameDirectory)
-        do {
-            try frameList.write(to: listURL, atomically: true, encoding: .utf8)
-        } catch {
-            DispatchQueue.main.async {
-                self.finishEncoding(success: false, errorMessage: "録画フレーム一覧の作成に失敗しました。")
-            }
-            return
-        }
-
-        let ffmpeg = FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent(".local/bin/ffmpeg")
+        let ffmpeg = Self.ffmpegURL
         let process = Process()
         process.executableURL = ffmpeg
         process.arguments = [
             "-hide_banner",
             "-loglevel", "error",
-            "-f", "concat",
-            "-safe", "0",
-            "-i", listURL.path,
-            "-vf", "scale=960:600:force_original_aspect_ratio=decrease,pad=960:600:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=1",
+            "-framerate", "1",
+            "-start_number", "0",
+            "-i", frameDirectory.appendingPathComponent("frame-%06d.jpg").path,
+            "-vf", "scale=960:600:force_original_aspect_ratio=decrease,pad=960:600:(ow-iw)/2:(oh-ih)/2,setsar=1",
+            "-fps_mode", "passthrough",
             "-c:v", "libx264",
             "-preset", "veryfast",
             "-tune", "stillimage",
@@ -1503,8 +3037,7 @@ final class OneFPSRecorder: NSObject {
             let tempDailyURL = dailyURL.deletingLastPathComponent()
                 .appendingPathComponent(".daily-\(Self.timestamp())-\(UUID().uuidString).mp4")
 
-            let ffmpeg = FileManager.default.homeDirectoryForCurrentUser
-                .appendingPathComponent(".local/bin/ffmpeg")
+            let ffmpeg = Self.ffmpegURL
             let process = Process()
             process.executableURL = ffmpeg
             process.arguments = [
@@ -1548,6 +3081,7 @@ final class OneFPSRecorder: NSObject {
                 }
                 try? FileManager.default.removeItem(at: backupURL)
                 try? FileManager.default.removeItem(at: segmentURL)
+                removeInterruptedWorkingVideos(in: dailyURL.deletingLastPathComponent())
                 return true
             } catch {
                 if FileManager.default.fileExists(atPath: backupURL.path) {
@@ -1563,8 +3097,7 @@ final class OneFPSRecorder: NSObject {
 
     private static func videoFrameCount(_ url: URL) -> Int {
         guard FileManager.default.fileExists(atPath: url.path) else { return 0 }
-        let ffprobe = FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent(".local/bin/ffprobe")
+        let ffprobe = Self.ffprobeURL
         let process = Process()
         let pipe = Pipe()
         process.executableURL = ffprobe
@@ -1600,6 +3133,24 @@ final class OneFPSRecorder: NSObject {
         let filename = "\(monthDayString(from: date))_\(RecorderSettings.recordingName).mp4"
         return dailyDirectory(for: date)
             .appendingPathComponent(filename)
+    }
+
+    private static func existingDailyVideoURL(for date: Date = Date()) -> URL {
+        let directory = dailyDirectory(for: date)
+        let monthDay = monthDayString(from: date)
+        if let files = try? FileManager.default.contentsOfDirectory(
+            at: directory,
+            includingPropertiesForKeys: [.isRegularFileKey],
+            options: [.skipsHiddenFiles]
+        ),
+           let videoURL = files
+            .filter({ $0.pathExtension.lowercased() == "mp4" })
+            .filter({ $0.deletingPathExtension().lastPathComponent.hasPrefix("\(monthDay)_") })
+            .sorted(by: { $0.lastPathComponent < $1.lastPathComponent })
+            .first {
+            return videoURL
+        }
+        return dailyOutputURL(for: date)
     }
 
     static func renameExistingRecordings(from oldName: String, to newName: String) {
@@ -1645,6 +3196,7 @@ final class OneFPSRecorder: NSObject {
         var urls: [URL] = []
         for case let fileURL as URL in enumerator {
             if fileURL.pathComponents.contains("バックアップ") { continue }
+            if fileURL.pathComponents.contains("提出") { continue }
             if isCanonicalDailyVideo(fileURL) {
                 urls.append(fileURL)
             }
@@ -1664,8 +3216,7 @@ final class OneFPSRecorder: NSObject {
 
         do {
             try concatList.write(to: listURL, atomically: true, encoding: .utf8)
-            let ffmpeg = FileManager.default.homeDirectoryForCurrentUser
-                .appendingPathComponent(".local/bin/ffmpeg")
+            let ffmpeg = Self.ffmpegURL
             let process = Process()
             process.executableURL = ffmpeg
             process.arguments = [
@@ -1953,7 +3504,101 @@ final class OneFPSRecorder: NSObject {
         }
     }
 
-    static func recoverOrphanedFrameDirectories() {
+    static func recoverInterruptedRecordingState() -> RecoveryReport {
+        var report = RecoveryReport()
+        recoverInterruptedDailyTransactions(report: &report)
+        recoverOrphanedFrameDirectories(report: &report)
+        return report
+    }
+
+    private static func recoverInterruptedDailyTransactions(report: inout RecoveryReport) {
+        guard FileManager.default.fileExists(atPath: recordingsDirectory.path),
+              let enumerator = FileManager.default.enumerator(
+                at: recordingsDirectory,
+                includingPropertiesForKeys: [.isRegularFileKey],
+                options: []
+              ) else { return }
+
+        for case let fileURL as URL in enumerator {
+            let name = fileURL.lastPathComponent
+            if name.hasPrefix(".daily-backup-"), name.hasSuffix(".mp4") {
+                restoreInterruptedDailyBackup(fileURL, report: &report)
+            } else if (name.hasPrefix(".daily-") || name.hasPrefix(".repair-")), name.hasSuffix(".mp4") {
+                if removeInterruptedWorkingVideo(fileURL) {
+                    report.removedInterruptedDailyFiles += 1
+                }
+            }
+        }
+    }
+
+    private static func removeInterruptedWorkingVideos(in directory: URL) {
+        let files = (try? FileManager.default.contentsOfDirectory(
+            at: directory,
+            includingPropertiesForKeys: [.isRegularFileKey],
+            options: []
+        )) ?? []
+        for fileURL in files where fileURL.pathExtension.lowercased() == "mp4" {
+            let name = fileURL.lastPathComponent
+            if name.hasPrefix(".daily-") || name.hasPrefix(".repair-") {
+                _ = removeInterruptedWorkingVideo(fileURL)
+            }
+        }
+    }
+
+    @discardableResult
+    private static func removeInterruptedWorkingVideo(_ fileURL: URL) -> Bool {
+        do {
+            try FileManager.default.removeItem(at: fileURL)
+            return true
+        } catch {
+            return false
+        }
+    }
+
+    private static func restoreInterruptedDailyBackup(_ backupURL: URL, report: inout RecoveryReport) {
+        let directory = backupURL.deletingLastPathComponent()
+        let visibleVideos = ((try? FileManager.default.contentsOfDirectory(
+            at: directory,
+            includingPropertiesForKeys: [.isRegularFileKey],
+            options: [.skipsHiddenFiles]
+        )) ?? []).filter {
+            $0.pathExtension.lowercased() == "mp4"
+                && !$0.lastPathComponent.hasPrefix(".")
+                && !$0.lastPathComponent.contains(".before-")
+        }
+
+        if !visibleVideos.isEmpty {
+            try? FileManager.default.removeItem(at: backupURL)
+            report.removedInterruptedDailyFiles += 1
+            return
+        }
+
+        guard let restoredName = dailyFilenameFromBackupDirectory(directory) else {
+            return
+        }
+
+        let restoredURL = directory.appendingPathComponent(restoredName)
+        if FileManager.default.fileExists(atPath: restoredURL.path) {
+            try? FileManager.default.removeItem(at: backupURL)
+            report.removedInterruptedDailyFiles += 1
+            return
+        }
+
+        do {
+            try FileManager.default.moveItem(at: backupURL, to: restoredURL)
+            report.restoredDailyBackups += 1
+        } catch {
+            return
+        }
+    }
+
+    private static func dailyFilenameFromBackupDirectory(_ directory: URL) -> String? {
+        let monthDay = directory.lastPathComponent
+        guard monthDay.range(of: #"^\d{4}$"#, options: .regularExpression) != nil else { return nil }
+        return "\(monthDay)_\(RecorderSettings.recordingName).mp4"
+    }
+
+    private static func recoverOrphanedFrameDirectories(report: inout RecoveryReport) {
         guard let enumerator = FileManager.default.enumerator(
             at: recordingsDirectory,
             includingPropertiesForKeys: [.isDirectoryKey],
@@ -1969,17 +3614,33 @@ final class OneFPSRecorder: NSObject {
         }
 
         for frameDirectory in frameDirectories.sorted(by: { $0.path < $1.path }) {
-            recoverFrameDirectory(frameDirectory)
+            switch recoverFrameDirectory(frameDirectory) {
+            case .recovered:
+                report.recoveredSegments += 1
+            case .removedEmpty:
+                report.removedEmptyFrameDirectories += 1
+            case .failed:
+                report.failedFrameDirectories.append(frameDirectory.path)
+            }
         }
     }
 
-    private static func recoverFrameDirectory(_ frameDirectory: URL) {
+    private enum FrameRecoveryResult {
+        case recovered
+        case removedEmpty
+        case failed
+    }
+
+    private static func recoverFrameDirectory(_ frameDirectory: URL) -> FrameRecoveryResult {
+        guard acquireFrameRecoveryLock(in: frameDirectory) else { return .failed }
+        defer { releaseFrameRecoveryLock(in: frameDirectory) }
+
         let frameNames = ((try? FileManager.default.contentsOfDirectory(atPath: frameDirectory.path)) ?? [])
             .filter { $0.hasSuffix(".jpg") }
             .sorted()
         guard !frameNames.isEmpty else {
             try? FileManager.default.removeItem(at: frameDirectory)
-            return
+            return .removedEmpty
         }
 
         let recoveredAt = Date()
@@ -1989,25 +3650,25 @@ final class OneFPSRecorder: NSObject {
         let endedAt = startedAt.addingTimeInterval(TimeInterval(recoveredFrameCount))
         let segmentID = metadata?.id ?? UUID().uuidString
         let outputURL = frameDirectory.appendingPathComponent("recovered-\(timestamp()).mp4")
-        let listURL = frameDirectory.appendingPathComponent("frames.txt")
-        let frameList = frameConcatList(frameNames: frameNames, in: frameDirectory)
-        guard (try? frameList.write(to: listURL, atomically: true, encoding: .utf8)) != nil else {
-            return
+
+        if recordingLogContainsSegmentID(segmentID, date: endedAt) {
+            try? FileManager.default.removeItem(at: frameDirectory)
+            return .recovered
         }
 
         do {
             if metadata?.videoAppended != true {
-                let ffmpeg = FileManager.default.homeDirectoryForCurrentUser
-                    .appendingPathComponent(".local/bin/ffmpeg")
+                let ffmpeg = Self.ffmpegURL
                 let process = Process()
                 process.executableURL = ffmpeg
                 process.arguments = [
                     "-hide_banner",
                     "-loglevel", "error",
-                    "-f", "concat",
-                    "-safe", "0",
-                    "-i", listURL.path,
-                    "-vf", "scale=960:600:force_original_aspect_ratio=decrease,pad=960:600:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=1",
+                    "-framerate", "1",
+                    "-start_number", "0",
+                    "-i", frameDirectory.appendingPathComponent("frame-%06d.jpg").path,
+                    "-vf", "scale=960:600:force_original_aspect_ratio=decrease,pad=960:600:(ow-iw)/2:(oh-ih)/2,setsar=1",
+                    "-fps_mode", "passthrough",
                     "-c:v", "libx264",
                     "-preset", "veryfast",
                     "-tune", "stillimage",
@@ -2027,7 +3688,7 @@ final class OneFPSRecorder: NSObject {
                         date: endedAt,
                         expectedAddedFrames: frameNames.count
                       ) else {
-                    return
+                    return .failed
                 }
                 writeSegmentMetadata(
                     SegmentMetadata(
@@ -2046,10 +3707,39 @@ final class OneFPSRecorder: NSObject {
                 endedAt: endedAt,
                 outputURL: dailyOutputURL(for: endedAt),
                 segmentID: segmentID
-            ), syncDerivedLogs(for: endedAt) else { return }
+            ), syncDerivedLogs(for: endedAt) else { return .failed }
             try? FileManager.default.removeItem(at: frameDirectory)
+            return .recovered
         } catch {
-            return
+            return .failed
+        }
+    }
+
+    private static func acquireFrameRecoveryLock(in frameDirectory: URL) -> Bool {
+        let lockURL = frameDirectory.appendingPathComponent(".recovery.lock")
+        if let attributes = try? FileManager.default.attributesOfItem(atPath: lockURL.path),
+           let modifiedAt = attributes[.modificationDate] as? Date,
+           Date().timeIntervalSince(modifiedAt) > 1800 {
+            try? FileManager.default.removeItem(at: lockURL)
+        }
+        let fd = open(lockURL.path, O_CREAT | O_EXCL | O_WRONLY, S_IRUSR | S_IWUSR)
+        guard fd >= 0 else { return false }
+        let pidText = "\(getpid())\n"
+        _ = pidText.withCString { write(fd, $0, strlen($0)) }
+        close(fd)
+        return true
+    }
+
+    private static func releaseFrameRecoveryLock(in frameDirectory: URL) {
+        try? FileManager.default.removeItem(at: frameDirectory.appendingPathComponent(".recovery.lock"))
+    }
+
+    private static func recordingLogContainsSegmentID(_ segmentID: String, date: Date) -> Bool {
+        guard !segmentID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return false }
+        let text = (try? String(contentsOf: dailyLogURL(for: date), encoding: .utf8)) ?? ""
+        return text.split(separator: "\n").dropFirst().contains { row in
+            let columns = row.split(separator: "\t", omittingEmptySubsequences: false).map(String.init)
+            return columns.count >= 5 && columns[4] == segmentID
         }
     }
 
@@ -2430,8 +4120,7 @@ final class OneFPSRecorder: NSObject {
             .appendingPathComponent(".repair-\(timestamp())-\(UUID().uuidString).mp4")
         let backupURL = videoURL.deletingLastPathComponent()
             .appendingPathComponent("\(videoURL.deletingPathExtension().lastPathComponent).before-video-reconcile-\(timestamp()).mp4")
-        let ffmpeg = FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent(".local/bin/ffmpeg")
+        let ffmpeg = Self.ffmpegURL
         let filter = "setpts=PTS*\(targetFrames)/\(currentFrames),fps=1,scale=960:600:force_original_aspect_ratio=decrease,pad=960:600:(ow-iw)/2:(oh-ih)/2,setsar=1"
 
         let process = Process()
@@ -2587,6 +4276,313 @@ final class OneFPSRecorder: NSObject {
         return (score.seconds, score.earnedYen)
     }
 
+    static func submitReport(
+        _ form: ReportSubmissionForm,
+        destinations: ReportSubmissionDestinations = ReportSubmissionDestinations()
+    ) throws -> ReportSubmissionResult {
+        _ = syncDerivedLogs(for: form.date)
+        let videoURL = existingDailyVideoURL(for: form.date)
+        guard FileManager.default.fileExists(atPath: videoURL.path) else {
+            throw NSError(
+                domain: "OneFPSRecorder",
+                code: 1001,
+                userInfo: [NSLocalizedDescriptionKey: "指定日の動画が見つかりません: \(videoURL.path)"]
+            )
+        }
+
+        let seconds = dailyWorkSeconds(for: form.date)
+        let minutes = max(0, seconds / 60)
+        let month = monthString(from: form.date)
+        let day = dayString(from: form.date)
+        let monthDay = monthDayString(from: form.date)
+        let submissionDirectory = monthlyDirectory(for: form.date)
+            .appendingPathComponent("提出", isDirectory: true)
+            .appendingPathComponent(monthDay, isDirectory: true)
+        try FileManager.default.createDirectory(at: submissionDirectory, withIntermediateDirectories: true)
+
+        let submittedVideoURL = submissionDirectory.appendingPathComponent(videoURL.lastPathComponent)
+        if FileManager.default.fileExists(atPath: submittedVideoURL.path) {
+            try FileManager.default.removeItem(at: submittedVideoURL)
+        }
+        try FileManager.default.copyItem(at: videoURL, to: submittedVideoURL)
+
+        let reportURL = monthlyDirectory(for: form.date).appendingPathComponent("業務報告-\(month).md")
+        try upsertReportEntry(
+            form: form,
+            reportURL: reportURL,
+            submittedVideoURL: submittedVideoURL,
+            minutes: minutes,
+            day: day
+        )
+
+        let docxReportURL = monthlyDirectory(for: form.date).appendingPathComponent("業務報告-\(month).docx")
+        let reportDataURL = monthlyDirectory(for: form.date).appendingPathComponent("業務報告データ-\(month).json")
+        try upsertDocxReportEntry(
+            form: form,
+            entriesURL: reportDataURL,
+            docxReportURL: docxReportURL,
+            submittedVideoURL: submittedVideoURL,
+            minutes: minutes,
+            day: day
+        )
+        try syncGoogleReportIfPossible(
+            form: form,
+            entriesURL: reportDataURL,
+            submittedVideoURL: submittedVideoURL,
+            uploadVideo: destinations.uploadVideoToDrive,
+            updateDocument: destinations.updateDriveReport
+        )
+
+        recordSubmissionReceipt(
+            date: form.date,
+            videoUploadedToDrive: destinations.uploadVideoToDrive && !form.driveFolderURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+            driveReportUpdated: destinations.updateDriveReport && !form.driveFolderURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+            slackPosted: false
+        )
+        if destinations.postToSlack {
+            try postSlackDailyReport(form: form)
+            recordSubmissionReceipt(
+                date: form.date,
+                videoUploadedToDrive: false,
+                driveReportUpdated: false,
+                slackPosted: true
+            )
+        }
+
+        return ReportSubmissionResult(reportURL: docxReportURL, submittedVideoURL: submittedVideoURL, minutes: minutes)
+    }
+
+    private static func syncGoogleReportIfPossible(
+        form: ReportSubmissionForm,
+        entriesURL: URL,
+        submittedVideoURL: URL,
+        uploadVideo: Bool,
+        updateDocument: Bool
+    ) throws {
+        let folderURL = form.driveFolderURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        let videoFolderURL = form.videoDriveFolderURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !folderURL.isEmpty, uploadVideo || updateDocument else { return }
+        let scriptURL = try googleReportSyncScriptURL()
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/python3")
+        var arguments = [
+            scriptURL.path,
+            "--folder-url", folderURL,
+            "--video-folder-url", videoFolderURL,
+            "--document-name", reportDocumentName(for: form.date),
+            "--template", expandedPath(RecorderSettings.reportTemplatePath),
+            "--entries-json", entriesURL.path
+        ]
+        if uploadVideo {
+            arguments.append(contentsOf: ["--video", submittedVideoURL.path])
+        } else {
+            arguments.append("--skip-video")
+        }
+        if !updateDocument {
+            arguments.append("--skip-document")
+        }
+        process.arguments = arguments
+        let pipe = Pipe()
+        process.standardError = pipe
+        process.standardOutput = pipe
+        try process.run()
+        process.waitUntilExit()
+        guard process.terminationStatus == 0 else {
+            let data = pipe.fileHandleForReading.readDataToEndOfFile()
+            let output = String(data: data, encoding: .utf8) ?? "詳細不明"
+            throw NSError(
+                domain: "OneFPSRecorder",
+                code: 1004,
+                userInfo: [NSLocalizedDescriptionKey: "Drive上の報告書更新に失敗しました。ローカル保存は完了しています。\n\(output)"]
+            )
+        }
+    }
+
+    private static func googleReportSyncScriptURL() throws -> URL {
+        let candidates = [
+            Bundle.main.resourceURL?.appendingPathComponent("sync_google_report.py"),
+            URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
+                .appendingPathComponent("scripts")
+                .appendingPathComponent("sync_google_report.py"),
+            URL(fileURLWithPath: #filePath)
+                .deletingLastPathComponent()
+                .deletingLastPathComponent()
+                .deletingLastPathComponent()
+                .appendingPathComponent("scripts")
+                .appendingPathComponent("sync_google_report.py")
+        ].compactMap { $0 }
+        if let found = candidates.first(where: { FileManager.default.fileExists(atPath: $0.path) }) {
+            return found
+        }
+        throw NSError(
+            domain: "OneFPSRecorder",
+            code: 1005,
+            userInfo: [NSLocalizedDescriptionKey: "Drive同期スクリプトが見つかりません。再インストールしてください。"]
+        )
+    }
+
+    private static func upsertDocxReportEntry(
+        form: ReportSubmissionForm,
+        entriesURL: URL,
+        docxReportURL: URL,
+        submittedVideoURL: URL,
+        minutes: Int,
+        day: String
+    ) throws {
+        try FileManager.default.createDirectory(at: entriesURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+        var entries: [StoredReportEntry] = []
+        if let data = try? Data(contentsOf: entriesURL),
+           let decoded = try? JSONDecoder().decode([StoredReportEntry].self, from: data) {
+            entries = decoded
+        }
+        let videoText = form.videoLink.trimmingCharacters(in: .whitespacesAndNewlines)
+        let entry = StoredReportEntry(
+            date: day,
+            displayDate: shortDateString(from: form.date),
+            reporter: form.reporter.trimmingCharacters(in: .whitespacesAndNewlines),
+            hours: minutes / 60,
+            minutes: minutes,
+            workPlan: form.workPlan.trimmingCharacters(in: .whitespacesAndNewlines),
+            workContent: form.workContent.trimmingCharacters(in: .whitespacesAndNewlines),
+            videoLink: videoText.isEmpty ? submittedVideoURL.lastPathComponent : videoText,
+            videoFileName: submittedVideoURL.lastPathComponent,
+            nextTask: form.nextTask.trimmingCharacters(in: .whitespacesAndNewlines),
+            status: form.status.trimmingCharacters(in: .whitespacesAndNewlines),
+            message: form.message.trimmingCharacters(in: .whitespacesAndNewlines)
+        )
+        entries.removeAll { $0.date == day }
+        entries.append(entry)
+        entries.sort { $0.date < $1.date }
+
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        try encoder.encode(entries).write(to: entriesURL, options: .atomic)
+        try regenerateDocxReport(entriesURL: entriesURL, outputURL: docxReportURL)
+    }
+
+    private static func regenerateDocxReport(entriesURL: URL, outputURL: URL) throws {
+        let scriptURL = try reportDocxScriptURL()
+        let templateURL = URL(fileURLWithPath: expandedPath(RecorderSettings.reportTemplatePath))
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/python3")
+        process.arguments = [
+            scriptURL.path,
+            "--template", templateURL.path,
+            "--output", outputURL.path,
+            "--entries-json", entriesURL.path
+        ]
+        let pipe = Pipe()
+        process.standardError = pipe
+        process.standardOutput = pipe
+        try process.run()
+        process.waitUntilExit()
+        guard process.terminationStatus == 0 else {
+            let data = pipe.fileHandleForReading.readDataToEndOfFile()
+            let output = String(data: data, encoding: .utf8) ?? "詳細不明"
+            throw NSError(
+                domain: "OneFPSRecorder",
+                code: 1002,
+                userInfo: [NSLocalizedDescriptionKey: "報告書DOCXの更新に失敗しました: \(output)"]
+            )
+        }
+    }
+
+    private static func reportDocxScriptURL() throws -> URL {
+        let candidates = [
+            Bundle.main.resourceURL?.appendingPathComponent("update_report_docx.py"),
+            URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
+                .appendingPathComponent("scripts")
+                .appendingPathComponent("update_report_docx.py"),
+            URL(fileURLWithPath: #filePath)
+                .deletingLastPathComponent()
+                .deletingLastPathComponent()
+                .deletingLastPathComponent()
+                .appendingPathComponent("scripts")
+                .appendingPathComponent("update_report_docx.py")
+        ].compactMap { $0 }
+        if let found = candidates.first(where: { FileManager.default.fileExists(atPath: $0.path) }) {
+            return found
+        }
+        throw NSError(
+            domain: "OneFPSRecorder",
+            code: 1003,
+            userInfo: [NSLocalizedDescriptionKey: "報告書更新スクリプトが見つかりません。再インストールしてください。"]
+        )
+    }
+
+    private static func expandedPath(_ path: String) -> String {
+        NSString(string: path).expandingTildeInPath
+    }
+
+    private static func upsertReportEntry(
+        form: ReportSubmissionForm,
+        reportURL: URL,
+        submittedVideoURL: URL,
+        minutes: Int,
+        day: String
+    ) throws {
+        let markerStart = "<!-- OneFPSReport:\(day) -->"
+        let markerEnd = "<!-- /OneFPSReport:\(day) -->"
+        let titleDate = shortDateString(from: form.date)
+        let videoText = form.videoLink.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            ? submittedVideoURL.lastPathComponent
+            : form.videoLink.trimmingCharacters(in: .whitespacesAndNewlines)
+        let entry = """
+        \(markerStart)
+        ## \(titleDate)
+
+        | 項目 | 入力欄 | 備考欄 |
+        | --- | --- | --- |
+        | 担当者 | \(markdownCell(form.reporter)) |  |
+        | 日付 | \(titleDate) |  |
+        | 業務時間 | \(reportMinutesText(minutes)) |  |
+        | 業務プラン | \(markdownCell(form.workPlan)) |  |
+        | 業務内容 | \(markdownCell(form.workContent)) |  |
+        | 業務動画リンク | \(markdownCell(videoText)) |  |
+        | 次回までのTask | \(markdownCell(form.nextTask)) |  |
+        | 業務は順調ですか？ | \(markdownCell(form.status)) |  |
+        | Visitasへのメッセージ | \(markdownCell(form.message)) |  |
+
+        \(markerEnd)
+        """
+
+        try FileManager.default.createDirectory(at: reportURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+        let existing = (try? String(contentsOf: reportURL, encoding: .utf8)) ?? "# 業務報告 \(monthString(from: form.date))\n\n"
+        let updated: String
+        if let startRange = existing.range(of: markerStart),
+           let endRange = existing.range(of: markerEnd, range: startRange.upperBound..<existing.endIndex) {
+            updated = existing.replacingCharacters(in: startRange.lowerBound..<endRange.upperBound, with: entry)
+        } else {
+            updated = existing.trimmingCharacters(in: .newlines) + "\n\n" + entry + "\n"
+        }
+        try updated.write(to: reportURL, atomically: true, encoding: .utf8)
+    }
+
+    private static func markdownCell(_ text: String) -> String {
+        let cleaned = text.trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacingOccurrences(of: "\n", with: "<br>")
+            .replacingOccurrences(of: "|", with: "\\|")
+        return cleaned.isEmpty ? "-" : cleaned
+    }
+
+    static func reportMinutesText(_ minutes: Int) -> String {
+        let safeMinutes = max(0, minutes)
+        return "\(safeMinutes / 60)h \(safeMinutes % 60)m"
+    }
+
+    private static func reportDocumentName(for date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "ja_JP")
+        formatter.dateFormat = "M"
+        return "報告書（\(formatter.string(from: date))月分）"
+    }
+
+    private static func shortDateString(from date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "M/d"
+        return formatter.string(from: date)
+    }
+
     private static func monthlyScoreValues(
         for date: Date,
         rows: [String],
@@ -2715,6 +4711,16 @@ final class OneFPSRecorder: NSObject {
         return CGDisplayBounds(display)
     }
 
+    private static func captureDisplayBounds() -> CGRect? {
+        guard let fixedDisplayID = RecorderSettings.captureDisplayID else {
+            return displayBoundsContainingMouse()
+        }
+        if CGDisplayIsActive(fixedDisplayID) != 0 {
+            return CGDisplayBounds(fixedDisplayID)
+        }
+        return CGDisplayBounds(CGMainDisplayID())
+    }
+
     private static func rectangleArgument(_ rectangle: CGRect) -> String {
         let x = Int(rectangle.origin.x.rounded())
         let y = Int(rectangle.origin.y.rounded())
@@ -2738,7 +4744,42 @@ enum RecorderError: LocalizedError {
     }
 }
 
-if CommandLine.arguments.count >= 3, CommandLine.arguments[1] == "--command" {
+if CommandLine.arguments.count >= 2, CommandLine.arguments[1] == "--agent-activity-probe" {
+    let monitor = AgentActivityMonitor()
+    let rounds = CommandLine.arguments.count >= 3 ? (Int(CommandLine.arguments[2]) ?? 3) : 3
+    let baseline = monitor.sample()
+    print("baseline processes=\(baseline.matchedProcessCount)")
+    for index in 1...max(1, rounds) {
+        Thread.sleep(forTimeInterval: AgentActivityMonitor.sampleInterval)
+        let sample = monitor.sample()
+        print("sample=\(index) processes=\(sample.matchedProcessCount) busyCPU=\(String(format: "%.2f", sample.busyCPUSeconds))s busyAgents=\(sample.busyAgentCount) busy=\(sample.isBusy)")
+    }
+} else if CommandLine.arguments.count >= 2, CommandLine.arguments[1] == "--report-config" {
+    print(OneFPSRecorder.reportAutomationConfigurationJSON())
+} else if CommandLine.arguments.count >= 2, CommandLine.arguments[1] == "--report-candidates" {
+    let formatter = DateFormatter()
+    formatter.dateFormat = "yyyy-MM"
+    let date = CommandLine.arguments.count >= 3
+        ? (formatter.date(from: CommandLine.arguments[2]) ?? Date())
+        : Date()
+    print(OneFPSRecorder.reportCandidatesJSON(inMonthContaining: date))
+} else if CommandLine.arguments.count >= 3, CommandLine.arguments[1] == "--submit-report-json" {
+    do {
+        print(try OneFPSRecorder.submitSkillRequest(at: URL(fileURLWithPath: CommandLine.arguments[2])))
+    } catch {
+        fputs("\(error.localizedDescription)\n", stderr)
+        exit(1)
+    }
+} else if CommandLine.arguments.count >= 3, CommandLine.arguments[1] == "--mark-slack-posted-date" {
+    let formatter = DateFormatter()
+    formatter.dateFormat = "yyyy-MM-dd"
+    guard let date = formatter.date(from: CommandLine.arguments[2]) else {
+        fputs("日付は yyyy-MM-dd で指定してください。\n", stderr)
+        exit(2)
+    }
+    OneFPSRecorder.markSlackPosted(on: date)
+    print("marked=\(CommandLine.arguments[2])")
+} else if CommandLine.arguments.count >= 3, CommandLine.arguments[1] == "--command" {
     let appSupportDirectory = FileManager.default.homeDirectoryForCurrentUser
         .appendingPathComponent("Library", isDirectory: true)
         .appendingPathComponent("Application Support", isDirectory: true)
@@ -2755,6 +4796,34 @@ if CommandLine.arguments.count >= 3, CommandLine.arguments[1] == "--command" {
         try? Data(line.utf8).write(to: commandFile)
     }
     Thread.sleep(forTimeInterval: 0.6)
+} else if CommandLine.arguments.count >= 3, CommandLine.arguments[1] == "--submit-report-date" {
+    let formatter = DateFormatter()
+    formatter.dateFormat = "yyyy-MM-dd"
+    guard let date = formatter.date(from: CommandLine.arguments[2]) else {
+        fputs("日付は yyyy-MM-dd で指定してください。\n", stderr)
+        exit(2)
+    }
+    let form = ReportSubmissionForm(
+        date: date,
+        reporter: RecorderSettings.reporterName,
+        workPlan: RecorderSettings.defaultWorkPlan,
+        workContent: CommandLine.arguments.count >= 4 ? CommandLine.arguments[3] : RecorderSettings.defaultWorkContent,
+        nextTask: CommandLine.arguments.count >= 5 ? CommandLine.arguments[4] : RecorderSettings.defaultNextTask,
+        status: RecorderSettings.defaultReportStatus,
+        message: RecorderSettings.defaultReportMessage,
+        videoLink: "",
+        driveFolderURL: RecorderSettings.driveFolderURL,
+        videoDriveFolderURL: RecorderSettings.videoDriveFolderURL
+    )
+    do {
+        let result = try OneFPSRecorder.submitReport(form)
+        print("report=\(result.reportURL.path)")
+        print("video=\(result.submittedVideoURL.path)")
+        print("minutes=\(result.minutes)")
+    } catch {
+        fputs("\(error.localizedDescription)\n", stderr)
+        exit(1)
+    }
 } else {
     let app = NSApplication.shared
     let delegate = AppDelegate()

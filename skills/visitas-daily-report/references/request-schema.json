@@ -1,0 +1,20 @@
+{
+  "reports": [
+    {
+      "date": "2026-07-13",
+      "reporter": "松田彩成",
+      "workPlan": "Visitasの開発",
+      "done": "実施内容。PRやIssueはURLまたは番号を含める",
+      "blockers": "なし",
+      "tomorrow": "次に行う作業",
+      "status": "順調",
+      "message": "",
+      "videoLink": ""
+    }
+  ],
+  "destinations": {
+    "uploadVideoToDrive": false,
+    "updateDriveReport": false,
+    "postToSlack": false
+  }
+}

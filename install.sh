@@ -10,6 +10,8 @@ INSTALLED_APP="$INSTALL_DIR/$APP_NAME.app"
 AGENT_DIR="$HOME/Library/LaunchAgents"
 AGENT_PLIST="$AGENT_DIR/local.codex.OneFPSRecorder.plist"
 LOCAL_BIN="$HOME/.local/bin"
+SIGNING_CONFIG_DIR="$HOME/Library/Application Support/OneFPSRecorder"
+SIGNING_CONFIG="$SIGNING_CONFIG_DIR/signing-identity.txt"
 
 ensure_command() {
   if ! command -v "$1" >/dev/null 2>&1; then
@@ -67,16 +69,31 @@ ensure_command codesign
 ensure_ffmpeg
 swift build -c release
 
-if find "$HOME/Movies/1FPS録画" -maxdepth 1 -type d -name '.frames-*' 2>/dev/null | grep -q .; then
-  echo "録画中の一時フレームがあります。録画停止後にもう一度インストールしてください。"
-  echo "保存中にアプリを入れ替えないよう、ここで止めています。"
+if find "$HOME/Movies/1FPS録画" -maxdepth 3 -path '*/.frames-*/*' -type f -mmin -2 2>/dev/null | grep -q .; then
+  echo "直近2分以内に更新された録画中の一時フレームがあります。録画停止後にもう一度インストールしてください。"
+  echo "保存中にアプリを入れ替えないよう、ここで止めています。古い一時フレームは起動時に自動復旧します。"
   exit 2
+fi
+
+if [[ -d "$INSTALLED_APP" ]]; then
+  pkill -f "$INSTALLED_APP/Contents/MacOS/$APP_NAME" 2>/dev/null || true
+  sleep 1
+  chmod -R u+w "$INSTALLED_APP" 2>/dev/null || true
 fi
 
 rm -rf "$APP_DIR"
 mkdir -p "$APP_DIR/Contents/MacOS" "$APP_DIR/Contents/Resources"
 cp "$BUILD_DIR/$APP_NAME" "$APP_DIR/Contents/MacOS/$APP_NAME"
 cp "$BUILD_DIR/${APP_NAME}Settings" "$APP_DIR/Contents/MacOS/${APP_NAME}Settings"
+cp "$ROOT_DIR/Resources/AppIcon.icns" "$APP_DIR/Contents/Resources/AppIcon.icns"
+cp "$ROOT_DIR/scripts/update_report_docx.py" "$APP_DIR/Contents/Resources/update_report_docx.py"
+cp "$ROOT_DIR/scripts/sync_google_report.py" "$APP_DIR/Contents/Resources/sync_google_report.py"
+cp "$LOCAL_BIN/ffmpeg" "$APP_DIR/Contents/Resources/ffmpeg"
+chmod +x "$APP_DIR/Contents/Resources/ffmpeg"
+if [[ -x "$LOCAL_BIN/ffprobe" ]]; then
+  cp "$LOCAL_BIN/ffprobe" "$APP_DIR/Contents/Resources/ffprobe"
+  chmod +x "$APP_DIR/Contents/Resources/ffprobe"
+fi
 cat > "$APP_DIR/Contents/Info.plist" <<'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -88,6 +105,8 @@ cat > "$APP_DIR/Contents/Info.plist" <<'PLIST'
   <string>local.codex.OneFPSRecorder</string>
   <key>CFBundleName</key>
   <string>OneFPSRecorder</string>
+  <key>CFBundleIconFile</key>
+  <string>AppIcon</string>
   <key>CFBundlePackageType</key>
   <string>APPL</string>
   <key>CFBundleShortVersionString</key>
@@ -108,13 +127,40 @@ mkdir -p "$INSTALL_DIR"
 rm -rf "$INSTALLED_APP"
 cp -R "$APP_DIR" "$INSTALLED_APP"
 xattr -dr com.apple.quarantine "$INSTALLED_APP" 2>/dev/null || true
-SIGNING_IDENTITY="$(security find-identity -p codesigning -v 2>/dev/null | awk -F '\"' '/Apple Development:/{print $2; exit}')"
+SIGNING_IDENTITY="${ONEFPS_SIGNING_IDENTITY:-}"
+if [[ -z "$SIGNING_IDENTITY" && -f "$SIGNING_CONFIG" ]]; then
+  SIGNING_IDENTITY="$(head -n 1 "$SIGNING_CONFIG" | tr -d '\r\n')"
+fi
+if [[ -z "$SIGNING_IDENTITY" ]]; then
+  SIGNING_IDENTITY="$(security find-identity -p codesigning -v 2>/dev/null | awk -F '\"' '/Developer ID Application:/{print $2; exit}')"
+fi
+if [[ -z "$SIGNING_IDENTITY" ]]; then
+  SIGNING_IDENTITY="$(security find-identity -p codesigning -v 2>/dev/null | awk -F '\"' '/Apple Development:/{print $2; exit}')"
+fi
 if [[ -n "${SIGNING_IDENTITY:-}" ]]; then
-  codesign --force --deep --sign "$SIGNING_IDENTITY" "$INSTALLED_APP"
+  if [[ "$SIGNING_IDENTITY" == Developer\ ID\ Application:* ]]; then
+    codesign --force --deep --options runtime --timestamp --sign "$SIGNING_IDENTITY" "$INSTALLED_APP"
+  else
+    codesign --force --deep --sign "$SIGNING_IDENTITY" "$INSTALLED_APP"
+  fi
+  codesign --verify --deep --strict --verbose=2 "$INSTALLED_APP"
+  TEAM_IDENTIFIER="$(codesign -dv --verbose=4 "$INSTALLED_APP" 2>&1 | awk -F= '/^TeamIdentifier=/{print $2; exit}')"
+  if [[ -z "$TEAM_IDENTIFIER" || "$TEAM_IDENTIFIER" == "not set" ]]; then
+    echo "安定した署名を確認できませんでした。画面収録権限を維持できないため、インストールを停止します。"
+    exit 3
+  fi
+  mkdir -p "$SIGNING_CONFIG_DIR"
+  printf '%s\n' "$SIGNING_IDENTITY" > "$SIGNING_CONFIG"
   echo "Signed with: $SIGNING_IDENTITY"
-else
+  echo "Signing team: $TEAM_IDENTIFIER"
+elif [[ "${ONEFPS_ALLOW_ADHOC:-0}" == "1" ]]; then
   codesign --force --deep --sign - "$INSTALLED_APP"
-  echo "Signed with: ad-hoc"
+  echo "Signed with: ad-hoc (画面収録権限はアプリ更新時に再許可が必要です)"
+else
+  echo "コード署名証明書が見つかりません。"
+  echo "アドホック署名で更新するとmacOSの画面収録権限が失効するため、既定では停止します。"
+  echo "一時検証だけ行う場合: ONEFPS_ALLOW_ADHOC=1 ./install.sh"
+  exit 3
 fi
 
 mkdir -p "$AGENT_DIR"
@@ -127,17 +173,22 @@ cat > "$AGENT_PLIST" <<PLIST
   <string>local.codex.OneFPSRecorder</string>
   <key>ProgramArguments</key>
   <array>
-    <string>$INSTALLED_APP/Contents/MacOS/$APP_NAME</string>
+    <string>/usr/bin/open</string>
+    <string>-gj</string>
+    <string>$INSTALLED_APP</string>
+    <string>--args</string>
+    <string>--background</string>
   </array>
   <key>RunAtLoad</key>
   <true/>
 </dict>
 </plist>
 PLIST
-pkill -f "$INSTALLED_APP/Contents/MacOS/$APP_NAME" 2>/dev/null || true
 launchctl bootout "gui/$(id -u)" "$AGENT_PLIST" 2>/dev/null || true
 launchctl bootstrap "gui/$(id -u)" "$AGENT_PLIST"
 launchctl kickstart -k "gui/$(id -u)/local.codex.OneFPSRecorder"
+"$ROOT_DIR/scripts/install_agent_skills.sh"
+rm -rf "$APP_DIR"
 
 echo "インストールして起動しました: $INSTALLED_APP"
 echo "ログイン時の自動起動: $AGENT_PLIST"

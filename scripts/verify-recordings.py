@@ -86,6 +86,8 @@ def main() -> int:
             continue
         log_paths = active_log_paths(month_dir)
         if not log_paths:
+            if not list(month_dir.glob("**/*.mp4")):
+                continue
             issues.append(f"録画区間ログがありません: {month_dir}")
             continue
 
